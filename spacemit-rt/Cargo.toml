@@ -1,0 +1,19 @@
+[package]
+name = "spacemit-rt"
+description = "Bare-metal runtime support for SpacemiT SoCs"
+version = "0.0.0"
+documentation = "https://docs.rs/spacemit-rt"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["runtime", "riscv", "spacemit", "k1", "k3"]
+categories = ["os", "embedded", "hardware-support", "no-std"]
+
+[package.metadata.docs.rs]
+default-target = "riscv64imac-unknown-none-elf"
+targets = ["riscv64imac-unknown-none-elf"]
+
+[dependencies]
+spacemit-hal = { workspace = true }
+spacemit-riscv = { workspace = true }

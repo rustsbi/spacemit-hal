@@ -39,8 +39,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3f2ad9f15a07f4a0e1677124f9120ce7e83ab7e1ca7186af0ca9da529b62e80"
 
 [[package]]
+name = "spacemit-hal"
+version = "0.0.0"
+dependencies = [
+ "embedded-hal",
+]
+
+[[package]]
 name = "spacemit-riscv"
 version = "0.0.0"
 dependencies = [
  "riscv",
+]
+
+[[package]]
+name = "spacemit-rt"
+version = "0.0.0"
+dependencies = [
+ "spacemit-hal",
+ "spacemit-riscv",
 ]
