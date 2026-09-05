@@ -43,6 +43,7 @@ name = "spacemit-hal"
 version = "0.0.0"
 dependencies = [
  "embedded-hal",
+ "vcell",
  "volatile-register",
 ]
 

@@ -1,6 +1,6 @@
-#![doc = include_str!("../README.md")]
+//! Peripheral abstractions for SpacemiT K1/M1 and K3 SoCs.
+
 #![no_std]
 #![deny(missing_docs)]
 
-/// General-purpose input/output controllers.
 pub mod gpio;

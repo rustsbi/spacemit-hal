@@ -1,9 +1,6 @@
-//! GPIO register layout used by SpacemiT K3 SoCs.
-//!
-//! Each K3 GPIO bank stores its registers contiguously. GPIO0 through GPIO2
-//! have a `0x40` stride; GPIO3 begins at register-block offset `0x100`.
+//! K3 GPIO register layout.
 
-use super::ReadWriteOneToClear;
+use super::{RW1C, bank::BankRegisters};
 use volatile_register::{RO, RW, WO};
 
 /// Registers for one K3 GPIO bank.
@@ -22,7 +19,7 @@ pub struct Bank {
     /// Falling-edge detect enable register (`GPIO_FER`).
     pub falling_edge_detect_enable: RW<u32>,
     /// Edge-detect status register (`GPIO_EDR`, read/write-one-to-clear).
-    pub edge_detect_status: ReadWriteOneToClear,
+    pub edge_detect_status: RW1C<u32>,
     /// Atomic direction-set register (`GPIO_SDR`).
     pub direction_set: WO<u32>,
     /// Atomic direction-clear register (`GPIO_CDR`).
@@ -41,20 +38,47 @@ pub struct Bank {
     pub cp_interrupt_mask: RW<u32>,
 }
 
+impl Bank {
+    #[inline(always)]
+    const fn registers(&self) -> BankRegisters<'_> {
+        BankRegisters::new(
+            &self.pin_level,
+            &self.pin_output_set,
+            &self.pin_output_clear,
+            &self.direction_set,
+            &self.direction_clear,
+        )
+    }
+}
+
 /// K3 GPIO register block.
 #[repr(C)]
 pub struct RegisterBlock {
     /// GPIO0 registers.
     pub gpio0: Bank,
-    _reserved0: [u32; 1],
+    _padding_0x03c: [u32; 1],
     /// GPIO1 registers.
     pub gpio1: Bank,
-    _reserved1: [u32; 1],
+    _padding_0x07c: [u32; 1],
     /// GPIO2 registers.
     pub gpio2: Bank,
-    _reserved2: [u32; 17],
+    _padding_0x0bc: [u32; 17],
     /// GPIO3 registers.
     pub gpio3: Bank,
+}
+
+impl RegisterBlock {
+    /// Returns a normalized view of one K3 GPIO bank.
+    #[inline(always)]
+    pub(in crate::gpio) const fn bank(&self, bank: u8) -> Option<BankRegisters<'_>> {
+        match bank {
+            0 => Some(self.gpio0.registers()),
+            1 => Some(self.gpio1.registers()),
+            2 => Some(self.gpio2.registers()),
+            3 => Some(self.gpio3.registers()),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -91,5 +115,27 @@ mod tests {
         assert_eq!(offset_of!(RegisterBlock, gpio3), 0x100);
         assert_eq!(size_of::<RegisterBlock>(), 0x13c);
         assert_eq!(align_of::<RegisterBlock>(), 4);
+    }
+
+    #[test]
+    fn normalized_banks_select_the_expected_registers() {
+        // SAFETY: Every field in the register block is a transparent wrapper
+        // around a 32-bit integer, for which the all-zero bit pattern is valid.
+        let registers: RegisterBlock = unsafe { core::mem::zeroed() };
+
+        let gpio0 = registers.bank(0).unwrap();
+        assert!(core::ptr::eq(gpio0.pin_level, &registers.gpio0.pin_level));
+        assert!(core::ptr::eq(
+            gpio0.direction_set,
+            &registers.gpio0.direction_set
+        ));
+
+        let gpio3 = registers.bank(3).unwrap();
+        assert!(core::ptr::eq(gpio3.pin_level, &registers.gpio3.pin_level));
+        assert!(core::ptr::eq(
+            gpio3.direction_set,
+            &registers.gpio3.direction_set
+        ));
+        assert!(registers.bank(4).is_none());
     }
 }

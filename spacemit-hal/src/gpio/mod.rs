@@ -1,8 +1,12 @@
 //! SpacemiT GPIO controllers.
-//!
-//! K1/M1 and K3 share the same broad GPIO capabilities, but not the same
-//! register layout. Select the register block matching the target SoC.
 
+mod function;
+mod inner;
+mod input;
+mod output;
 mod register;
 
-pub use register::{ReadWriteOneToClear, k1, k3};
+pub use function::Function;
+pub use input::Input;
+pub use output::Output;
+pub use register::{RW1C, k1, k3};
