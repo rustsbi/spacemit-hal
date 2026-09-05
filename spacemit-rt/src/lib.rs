@@ -2,3 +2,12 @@
 
 #![no_std]
 #![deny(missing_docs)]
+
+#[macro_use]
+mod macros;
+
+/// SoC-specific peripheral ownership and address maps.
+pub mod soc {
+    pub mod k1;
+    pub mod k3;
+}

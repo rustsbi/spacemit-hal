@@ -4,8 +4,8 @@
 //! The parent uses two address cells, two size cells, and identity translation.
 //! The 0x800-byte region covers all four banks, including GPIO3 at offset 0x100.
 //! References:
-//! https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k3.dtsi
-//! https://github.com/torvalds/linux/blob/master/Documentation/devicetree/bindings/gpio/spacemit,k1-gpio.yaml
+//! <https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k3.dtsi>
+//! <https://github.com/torvalds/linux/blob/master/Documentation/devicetree/bindings/gpio/spacemit,k1-gpio.yaml>
 //!
 //! ```dts
 //! #include <dt-bindings/clock/spacemit,k3-clocks.h>

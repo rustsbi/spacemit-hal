@@ -16,5 +16,7 @@ targets = ["riscv64imac-unknown-none-elf"]
 
 [dependencies]
 embedded-hal = { workspace = true }
+embedded-io = { workspace = true }
+uart16550 = { workspace = true }
 vcell = { workspace = true }
 volatile-register = { workspace = true }

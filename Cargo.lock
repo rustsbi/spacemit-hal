@@ -15,6 +15,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
+name = "embedded-io"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb1aa714776b75c7e67e1da744b81a129b3ff919c8712b5e1b32252c1f07cc7"
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -57,6 +63,8 @@ name = "spacemit-hal"
 version = "0.0.0"
 dependencies = [
  "embedded-hal",
+ "embedded-io",
+ "uart16550",
  "vcell",
  "volatile-register",
 ]
@@ -75,6 +83,12 @@ dependencies = [
  "spacemit-hal",
  "spacemit-riscv",
 ]
+
+[[package]]
+name = "uart16550"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "939f6f9ccad815fe3efca8fd06f2ec1620c0387fb1bca2b231b61ce710bffb9b"
 
 [[package]]
 name = "vcell"

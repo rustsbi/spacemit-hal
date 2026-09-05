@@ -3,68 +3,6 @@
 use super::{RW1C, bank::BankRegisters};
 use volatile_register::{RO, RW, WO};
 
-/// Register group for K1/M1 GPIO3.
-#[repr(C)]
-pub struct Bank {
-    /// Pin level register (`GPIO_PLR`).
-    pub pin_level: RO<u32>,
-    _padding_0x004: [u32; 2],
-    /// Pin direction register (`GPIO_PDR`).
-    pub pin_direction: RW<u32>,
-    _padding_0x010: [u32; 2],
-    /// Atomic pin output-set register (`GPIO_PSR`).
-    pub pin_output_set: WO<u32>,
-    _padding_0x01c: [u32; 2],
-    /// Atomic pin output-clear register (`GPIO_PCR`).
-    pub pin_output_clear: WO<u32>,
-    _padding_0x028: [u32; 2],
-    /// Rising-edge detect enable register (`GPIO_RER`).
-    pub rising_edge_detect_enable: RW<u32>,
-    _padding_0x034: [u32; 2],
-    /// Falling-edge detect enable register (`GPIO_FER`).
-    pub falling_edge_detect_enable: RW<u32>,
-    _padding_0x040: [u32; 2],
-    /// Edge-detect status register (`GPIO_EDR`, read/write-one-to-clear).
-    pub edge_detect_status: RW1C<u32>,
-    _padding_0x04c: [u32; 2],
-    /// Atomic direction-set register (`GPIO_SDR`).
-    pub direction_set: WO<u32>,
-    _padding_0x058: [u32; 2],
-    /// Atomic direction-clear register (`GPIO_CDR`).
-    pub direction_clear: WO<u32>,
-    _padding_0x064: [u32; 2],
-    /// Atomic rising-edge-enable-set register (`GPIO_SRER`).
-    pub rising_edge_detect_set: WO<u32>,
-    _padding_0x070: [u32; 2],
-    /// Atomic rising-edge-enable-clear register (`GPIO_CRER`).
-    pub rising_edge_detect_clear: WO<u32>,
-    _padding_0x07c: [u32; 2],
-    /// Atomic falling-edge-enable-set register (`GPIO_SFER`).
-    pub falling_edge_detect_set: WO<u32>,
-    _padding_0x088: [u32; 2],
-    /// Atomic falling-edge-enable-clear register (`GPIO_CFER`).
-    pub falling_edge_detect_clear: WO<u32>,
-    _padding_0x094: [u32; 2],
-    /// Application-processor interrupt mask register (`GPIO_APMASK`).
-    pub ap_interrupt_mask: RW<u32>,
-    _padding_0x0a0: [u32; 2],
-    /// Companion-processor interrupt mask register (`GPIO_CPMASK`).
-    pub cp_interrupt_mask: RW<u32>,
-}
-
-impl Bank {
-    #[inline(always)]
-    const fn registers(&self) -> BankRegisters<'_> {
-        BankRegisters::new(
-            &self.pin_level,
-            &self.pin_output_set,
-            &self.pin_output_clear,
-            &self.direction_set,
-            &self.direction_clear,
-        )
-    }
-}
-
 /// K1/M1 GPIO register block.
 #[repr(C)]
 pub struct RegisterBlock {
@@ -125,6 +63,68 @@ impl RegisterBlock {
             3 => Some(self.gpio3.registers()),
             _ => None,
         }
+    }
+}
+
+/// Register group for K1/M1 GPIO3.
+#[repr(C)]
+pub struct Bank {
+    /// Pin level register (`GPIO_PLR`).
+    pub pin_level: RO<u32>,
+    _padding_0x004: [u32; 2],
+    /// Pin direction register (`GPIO_PDR`).
+    pub pin_direction: RW<u32>,
+    _padding_0x010: [u32; 2],
+    /// Atomic pin output-set register (`GPIO_PSR`).
+    pub pin_output_set: WO<u32>,
+    _padding_0x01c: [u32; 2],
+    /// Atomic pin output-clear register (`GPIO_PCR`).
+    pub pin_output_clear: WO<u32>,
+    _padding_0x028: [u32; 2],
+    /// Rising-edge detect enable register (`GPIO_RER`).
+    pub rising_edge_detect_enable: RW<u32>,
+    _padding_0x034: [u32; 2],
+    /// Falling-edge detect enable register (`GPIO_FER`).
+    pub falling_edge_detect_enable: RW<u32>,
+    _padding_0x040: [u32; 2],
+    /// Edge-detect status register (`GPIO_EDR`, read/write-one-to-clear).
+    pub edge_detect_status: RW1C<u32>,
+    _padding_0x04c: [u32; 2],
+    /// Atomic direction-set register (`GPIO_SDR`).
+    pub direction_set: WO<u32>,
+    _padding_0x058: [u32; 2],
+    /// Atomic direction-clear register (`GPIO_CDR`).
+    pub direction_clear: WO<u32>,
+    _padding_0x064: [u32; 2],
+    /// Atomic rising-edge-enable-set register (`GPIO_SRER`).
+    pub rising_edge_detect_set: WO<u32>,
+    _padding_0x070: [u32; 2],
+    /// Atomic rising-edge-enable-clear register (`GPIO_CRER`).
+    pub rising_edge_detect_clear: WO<u32>,
+    _padding_0x07c: [u32; 2],
+    /// Atomic falling-edge-enable-set register (`GPIO_SFER`).
+    pub falling_edge_detect_set: WO<u32>,
+    _padding_0x088: [u32; 2],
+    /// Atomic falling-edge-enable-clear register (`GPIO_CFER`).
+    pub falling_edge_detect_clear: WO<u32>,
+    _padding_0x094: [u32; 2],
+    /// Application-processor interrupt mask register (`GPIO_APMASK`).
+    pub ap_interrupt_mask: RW<u32>,
+    _padding_0x0a0: [u32; 2],
+    /// Companion-processor interrupt mask register (`GPIO_CPMASK`).
+    pub cp_interrupt_mask: RW<u32>,
+}
+
+impl Bank {
+    #[inline(always)]
+    const fn registers(&self) -> BankRegisters<'_> {
+        BankRegisters::new(
+            &self.pin_level,
+            &self.pin_output_set,
+            &self.pin_output_clear,
+            &self.direction_set,
+            &self.direction_clear,
+        )
     }
 }
 

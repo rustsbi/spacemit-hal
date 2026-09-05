@@ -3,4 +3,13 @@
 #![no_std]
 #![deny(missing_docs)]
 
+pub mod apbc;
+pub mod apbs;
+pub mod apmu;
+pub mod counter;
 pub mod gpio;
+pub mod i2c;
+pub mod mfpr;
+pub mod mpmu;
+pub mod qspi;
+pub mod uart;

@@ -3,6 +3,36 @@
 use super::{RW1C, bank::BankRegisters};
 use volatile_register::{RO, RW, WO};
 
+/// K3 GPIO register block.
+#[repr(C)]
+pub struct RegisterBlock {
+    /// GPIO0 registers.
+    pub gpio0: Bank,
+    _padding_0x03c: [u32; 1],
+    /// GPIO1 registers.
+    pub gpio1: Bank,
+    _padding_0x07c: [u32; 1],
+    /// GPIO2 registers.
+    pub gpio2: Bank,
+    _padding_0x0bc: [u32; 17],
+    /// GPIO3 registers.
+    pub gpio3: Bank,
+}
+
+impl RegisterBlock {
+    /// Returns a normalized view of one K3 GPIO bank.
+    #[inline(always)]
+    pub(in crate::gpio) const fn bank(&self, bank: u8) -> Option<BankRegisters<'_>> {
+        match bank {
+            0 => Some(self.gpio0.registers()),
+            1 => Some(self.gpio1.registers()),
+            2 => Some(self.gpio2.registers()),
+            3 => Some(self.gpio3.registers()),
+            _ => None,
+        }
+    }
+}
+
 /// Registers for one K3 GPIO bank.
 #[repr(C)]
 pub struct Bank {
@@ -48,36 +78,6 @@ impl Bank {
             &self.direction_set,
             &self.direction_clear,
         )
-    }
-}
-
-/// K3 GPIO register block.
-#[repr(C)]
-pub struct RegisterBlock {
-    /// GPIO0 registers.
-    pub gpio0: Bank,
-    _padding_0x03c: [u32; 1],
-    /// GPIO1 registers.
-    pub gpio1: Bank,
-    _padding_0x07c: [u32; 1],
-    /// GPIO2 registers.
-    pub gpio2: Bank,
-    _padding_0x0bc: [u32; 17],
-    /// GPIO3 registers.
-    pub gpio3: Bank,
-}
-
-impl RegisterBlock {
-    /// Returns a normalized view of one K3 GPIO bank.
-    #[inline(always)]
-    pub(in crate::gpio) const fn bank(&self, bank: u8) -> Option<BankRegisters<'_>> {
-        match bank {
-            0 => Some(self.gpio0.registers()),
-            1 => Some(self.gpio1.registers()),
-            2 => Some(self.gpio2.registers()),
-            3 => Some(self.gpio3.registers()),
-            _ => None,
-        }
     }
 }
 
