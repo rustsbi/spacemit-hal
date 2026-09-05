@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt"]
-default-members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt"]
+members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt", "examples/linux-gpioinfo"]
+default-members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt", "examples/linux-gpioinfo"]
 
 [workspace.package]
 edition = "2024"

@@ -1,0 +1,12 @@
+[package]
+name = "linux-gpioinfo"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+spacemit-hal = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
