@@ -94,11 +94,10 @@ impl<'a, I: UartId> UartClock<'a, I> {
     /// Acquires a UART clock register without reading or writing hardware.
     ///
     /// # Safety
-    /// The register must control UART I and remain mapped and accessible for 'a.
-    /// Its exclusive access is transferred to this token for 'a; dropping or
-    /// forgetting a wrapper must not recreate an owner. Supplied frequencies
-    /// must remain correct. No hart, firmware or raw register user may bypass
-    /// that ownership; this function does not freeze upstream sources.
+    /// Exclusively own UART I's clock register for 'a, without recreating owners;
+    /// its mapping and upstream power/clocks must stay valid, enabling UART access
+    /// when the gate is enabled; no external writer may change these conditions,
+    /// and supplied frequencies must remain correct, including after drop or forget.
     pub const unsafe fn from_register(register: &'a RW<UartClockReset>, clocks: Clocks) -> Self {
         Self {
             inner: UartClockRef {

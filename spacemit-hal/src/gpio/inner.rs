@@ -6,6 +6,9 @@ use super::register::{bank::BankRegisters, k1, k3};
 pub(super) struct GpioInner<'a> {
     registers: BankRegisters<'a>,
     mask: u32,
+    configuration: Option<&'a volatile_register::RW<u32>>,
+    gpio_function: u8,
+    _not_send_sync: core::marker::PhantomData<*mut ()>,
 }
 
 impl<'a> GpioInner<'a> {
@@ -26,6 +29,27 @@ impl<'a> GpioInner<'a> {
         Self {
             registers,
             mask: 1 << number,
+            configuration: None,
+            gpio_function: 0,
+            _not_send_sync: core::marker::PhantomData,
+        }
+    }
+
+    pub(super) fn with_configuration(
+        mut self,
+        configuration: &'a volatile_register::RW<u32>,
+        gpio_function: u8,
+    ) -> Self {
+        self.configuration = Some(configuration);
+        self.gpio_function = gpio_function;
+        self
+    }
+
+    pub(super) fn configure_function(self, function: u8) {
+        assert!(function < 8, "GPIO alternate function must be in 0..8");
+        if let Some(configuration) = self.configuration {
+            // SAFETY: Exclusive MFPR register; change only AF_SEL [2:0], preserving RW EDGE_CLEAR.
+            unsafe { configuration.modify(|bits| (bits & !0x7) | u32::from(function)) };
         }
     }
 
@@ -33,15 +57,16 @@ impl<'a> GpioInner<'a> {
     pub(super) fn configure_input(self) {
         // SAFETY: Selects only the uniquely owned pin.
         unsafe { self.registers.direction_clear.write(self.mask) };
+        self.configure_function(self.gpio_function);
     }
 
     #[inline]
     pub(super) fn configure_output(self, initial_state: PinState) {
-        // Program the output latch before enabling the output driver so the
-        // transition cannot expose an old, unknown latch value on the pad.
+        // Set the latch before enabling output.
         self.set_state(initial_state);
         // SAFETY: Selects only the uniquely owned pin.
         unsafe { self.registers.direction_set.write(self.mask) };
+        self.configure_function(self.gpio_function);
     }
 
     #[inline]

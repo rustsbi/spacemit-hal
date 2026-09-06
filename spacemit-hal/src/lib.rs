@@ -12,5 +12,6 @@ pub mod gpio;
 pub mod i2c;
 pub mod mfpr;
 pub mod mpmu;
+pub mod prelude;
 pub mod qspi;
 pub mod uart;

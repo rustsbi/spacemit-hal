@@ -70,6 +70,67 @@ impl_uart!(
     UART0, UART1, UART2, UART3, UART4, UART5, UART6, UART7, UART8, UART9, R_UART0, R_UART1
 );
 
+gpio_pads!(__new_k1);
+
+// UART GPIO routes: Linux k1-pinctrl.dtsi; TX and RX may use different functions.
+// https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k1-pinctrl.dtsi
+impl_uart_pads! {
+    (68, 2): IntoTransmit, into_uart_transmit, UART0;
+    (69, 2): IntoReceive, into_uart_receive, UART0;
+    (80, 3): IntoReceive, into_uart_receive, UART0;
+    (104, 3): IntoTransmit, into_uart_transmit, UART0;
+    (105, 3): IntoReceive, into_uart_receive, UART0;
+    (108, 1): IntoTransmit, into_uart_transmit, UART0;
+    (21, 1): IntoTransmit, into_uart_transmit, UART2;
+    (22, 1): IntoReceive, into_uart_receive, UART2;
+    (18, 2): IntoTransmit, into_uart_transmit, UART3;
+    (19, 2): IntoReceive, into_uart_receive, UART3;
+    (53, 4): IntoTransmit, into_uart_transmit, UART3;
+    (54, 4): IntoReceive, into_uart_receive, UART3;
+    (81, 2): IntoTransmit, into_uart_transmit, UART3;
+    (82, 2): IntoReceive, into_uart_receive, UART3;
+    (23, 2): IntoTransmit, into_uart_transmit, UART4;
+    (24, 2): IntoReceive, into_uart_receive, UART4;
+    (33, 2): IntoTransmit, into_uart_transmit, UART4;
+    (34, 2): IntoReceive, into_uart_receive, UART4;
+    (83, 3): IntoTransmit, into_uart_transmit, UART4;
+    (84, 3): IntoReceive, into_uart_receive, UART4;
+    (100, 4): IntoTransmit, into_uart_transmit, UART4;
+    (101, 4): IntoReceive, into_uart_receive, UART4;
+    (111, 4): IntoTransmit, into_uart_transmit, UART4;
+    (112, 4): IntoReceive, into_uart_receive, UART4;
+    (25, 2): IntoTransmit, into_uart_transmit, UART5;
+    (26, 2): IntoReceive, into_uart_receive, UART5;
+    (42, 2): IntoTransmit, into_uart_transmit, UART5;
+    (43, 2): IntoReceive, into_uart_receive, UART5;
+    (70, 4): IntoTransmit, into_uart_transmit, UART5;
+    (71, 4): IntoReceive, into_uart_receive, UART5;
+    (102, 3): IntoTransmit, into_uart_transmit, UART5;
+    (103, 3): IntoReceive, into_uart_receive, UART5;
+    (0, 2): IntoTransmit, into_uart_transmit, UART6;
+    (1, 2): IntoReceive, into_uart_receive, UART6;
+    (56, 2): IntoTransmit, into_uart_transmit, UART6;
+    (57, 2): IntoReceive, into_uart_receive, UART6;
+    (86, 2): IntoTransmit, into_uart_transmit, UART6;
+    (87, 2): IntoReceive, into_uart_receive, UART6;
+    (4, 2): IntoTransmit, into_uart_transmit, UART7;
+    (5, 2): IntoReceive, into_uart_receive, UART7;
+    (88, 2): IntoTransmit, into_uart_transmit, UART7;
+    (89, 2): IntoReceive, into_uart_receive, UART7;
+    (8, 2): IntoTransmit, into_uart_transmit, UART8;
+    (9, 2): IntoReceive, into_uart_receive, UART8;
+    (75, 4): IntoTransmit, into_uart_transmit, UART8;
+    (76, 4): IntoReceive, into_uart_receive, UART8;
+    (82, 4): IntoTransmit, into_uart_transmit, UART8;
+    (83, 4): IntoReceive, into_uart_receive, UART8;
+    (12, 2): IntoTransmit, into_uart_transmit, UART9;
+    (13, 2): IntoReceive, into_uart_receive, UART9;
+    (72, 2): IntoTransmit, into_uart_transmit, UART9;
+    (73, 2): IntoReceive, into_uart_receive, UART9;
+    (116, 3): IntoTransmit, into_uart_transmit, UART9;
+    (117, 3): IntoReceive, into_uart_receive, UART9;
+}
+
 apbc_clocks! {
     APBC, apbc::k1::RegisterBlock;
     uart {
@@ -117,8 +178,6 @@ pub struct Peripherals {
     pub apbs: APBS,
     /// Main power-management peripheral.
     pub mpmu: MPMU,
-    /// Multi-function pad peripheral.
-    pub mfpr: MFPR,
     /// Quad-SPI memory-controller peripheral.
     pub qspi: QSPI,
     /// Generic counter peripheral.
@@ -127,8 +186,8 @@ pub struct Peripherals {
     pub apbc_clocks: ApbcClocks<'static>,
     /// Application-processor power, clock, and reset peripheral.
     pub apmu: APMU,
-    /// GPIO peripheral.
-    pub gpio: GPIO,
+    /// Exclusive GPIO pad tokens.
+    pub gpio: GpioPads,
     /// UART0 peripheral.
     pub uart0: UART0,
     /// UART1 peripheral.
@@ -159,8 +218,7 @@ impl Peripherals {
     /// Acquires peripheral tokens once across all harts and SoC modules.
     ///
     /// # Safety
-    /// The hardware-access requirements of `steal` must hold; consumed UART
-    /// and APBC clock tokens require a permanently valid register mapping.
+    /// The hardware-access requirements of [`Self::steal`] must hold.
     pub unsafe fn take() -> Option<Self> {
         if !super::claim_peripherals(&super::PERIPHERALS_TAKEN) {
             return None;
@@ -172,14 +230,11 @@ impl Peripherals {
     /// Acquires peripheral tokens without initializing hardware or checking ownership.
     ///
     /// # Safety
-    ///
-    /// The caller must run on K1/M1 with each used register block identity-mapped,
-    /// aligned, and accessible at the current privilege level, including UART1's
-    /// secure domain; power, clocks, and reset must permit every register access.
-    /// These conditions must hold for all register borrows, permanently for
-    /// consumed UART tokens and APBC clock tokens, and no other tokens,
-    /// drivers, harts, interrupt handlers, DMA, or OS may concurrently access the
-    /// same peripherals, including through the other SoC module.
+    /// Run on K1/M1 with aligned, identity-mapped registers accessible at the current
+    /// privilege level, including secure UART1; retain valid power, upstream clocks
+    /// and reset for every access, permanently for consumed tokens and pad/clock tokens.
+    /// Stop conflicting users and DMA, including former pad users; no hart, firmware
+    /// or duplicate owner may invalidate these guarantees, even after drop or forget.
     #[inline]
     pub unsafe fn steal() -> Self {
         super::PERIPHERALS_TAKEN.store(true, core::sync::atomic::Ordering::Release);
@@ -214,9 +269,6 @@ impl Peripherals {
             mpmu: MPMU {
                 _private: core::marker::PhantomData,
             },
-            mfpr: MFPR {
-                _private: core::marker::PhantomData,
-            },
             qspi: QSPI {
                 _private: core::marker::PhantomData,
             },
@@ -228,9 +280,8 @@ impl Peripherals {
             apmu: APMU {
                 _private: core::marker::PhantomData,
             },
-            gpio: GPIO {
-                _private: core::marker::PhantomData,
-            },
+            // SAFETY: The caller transfers all GPIO bits and MFPR registers once.
+            gpio: unsafe { GpioPads::new() },
             uart0: UART0 {
                 _private: core::marker::PhantomData,
             },

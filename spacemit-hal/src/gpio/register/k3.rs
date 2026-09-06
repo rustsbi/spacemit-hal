@@ -20,7 +20,7 @@ pub struct RegisterBlock {
 }
 
 impl RegisterBlock {
-    /// Returns a normalized view of one K3 GPIO bank.
+    /// Borrows one GPIO bank.
     #[inline(always)]
     pub(in crate::gpio) const fn bank(&self, bank: u8) -> Option<BankRegisters<'_>> {
         match bank {
@@ -71,20 +71,36 @@ pub struct Bank {
 impl Bank {
     #[inline(always)]
     const fn registers(&self) -> BankRegisters<'_> {
-        BankRegisters::new(
-            &self.pin_level,
-            &self.pin_output_set,
-            &self.pin_output_clear,
-            &self.direction_set,
-            &self.direction_clear,
-        )
+        BankRegisters {
+            pin_level: &self.pin_level,
+            pin_output_set: &self.pin_output_set,
+            pin_output_clear: &self.pin_output_clear,
+            direction_set: &self.direction_set,
+            direction_clear: &self.direction_clear,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Bank, RegisterBlock};
+    use crate::{
+        gpio::{FlexPad, PadExt, PinState},
+        mfpr,
+        prelude::*,
+    };
     use core::mem::{align_of, offset_of, size_of};
+    use embedded_hal::digital::StatefulOutputPin;
+
+    fn fixture() -> (RegisterBlock, mfpr::k3::RegisterBlock) {
+        // SAFETY: Both blocks contain only zero-valid integer register cells.
+        unsafe { core::mem::zeroed() }
+    }
+
+    unsafe fn read(register: &volatile_register::WO<u32>) -> u32 {
+        // SAFETY: Callers supply live RAM fixtures, never real write-only MMIO.
+        unsafe { core::ptr::from_ref(register).cast::<u32>().read_volatile() }
+    }
 
     #[test]
     fn bank_layout() {
@@ -118,24 +134,108 @@ mod tests {
     }
 
     #[test]
-    fn normalized_banks_select_the_expected_registers() {
-        // SAFETY: Every field in the register block is a transparent wrapper
-        // around a 32-bit integer, for which the all-zero bit pattern is valid.
-        let registers: RegisterBlock = unsafe { core::mem::zeroed() };
+    fn bank_mapping() {
+        let (gpio, _) = fixture();
+        let base = &gpio as *const _ as usize;
+        for (i, offset) in [0, 0x40, 0x80, 0x100].into_iter().enumerate() {
+            let bank = gpio.bank(i as u8).unwrap();
+            assert_eq!(bank.pin_level as *const _ as usize - base, offset);
+            assert_eq!(
+                bank.direction_set as *const _ as usize - base,
+                offset + 0x1c
+            );
+        }
+        assert!(gpio.bank(4).is_none());
+    }
 
-        let gpio0 = registers.bank(0).unwrap();
-        assert!(core::ptr::eq(gpio0.pin_level, &registers.gpio0.pin_level));
-        assert!(core::ptr::eq(
-            gpio0.direction_set,
-            &registers.gpio0.direction_set
-        ));
+    #[test]
+    fn pad_modes() {
+        let (gpio, mfpr) = fixture();
+        for n in 0..128 {
+            let bank = gpio.bank(n / 32).unwrap();
+            let config = &mfpr.gpio[usize::from(n)];
+            let aliases = [
+                bank.pin_output_set,
+                bank.pin_output_clear,
+                bank.direction_set,
+                bank.direction_clear,
+            ];
+            let mask = 1 << (n % 32);
+            // SAFETY: Exclusive, initialized RAM fixtures; WO cells retain writes.
+            unsafe {
+                config.write(0xffff_fff8);
+                for reg in aliases {
+                    reg.write(0);
+                }
+                let pad = FlexPad::__new_k3(n, &gpio, &mfpr).into_function::<7>();
+                assert_eq!(config.read(), 0xffff_ffff);
+                assert_eq!(aliases.map(|reg| read(reg)), [0; 4]);
+                let pad = FlexPad::from(pad).into_function::<0>();
+                assert_eq!(config.read(), 0xffff_fff8);
 
-        let gpio3 = registers.bank(3).unwrap();
-        assert!(core::ptr::eq(gpio3.pin_level, &registers.gpio3.pin_level));
-        assert!(core::ptr::eq(
-            gpio3.direction_set,
-            &registers.gpio3.direction_set
-        ));
-        assert!(registers.bank(4).is_none());
+                let mut output = FlexPad::from(pad).into_output(PinState::High);
+                assert_eq!(config.read(), 0xffff_fff8);
+                assert_eq!(
+                    (read(bank.pin_output_set), read(bank.direction_set)),
+                    (mask, mask)
+                );
+                assert!(output.is_set_high().unwrap());
+                output.set_low().unwrap();
+                assert_eq!(read(bank.pin_output_clear), mask);
+                assert!(output.is_set_low().unwrap());
+
+                let mut input = output.into_input();
+                assert_eq!(read(bank.direction_clear), mask);
+                core::ptr::from_ref(bank.pin_level)
+                    .cast_mut()
+                    .cast::<u32>()
+                    .write_volatile(mask);
+                assert!(input.is_high().unwrap());
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "GPIO number must be in 0..128")]
+    fn invalid_pin() {
+        let (gpio, mfpr) = fixture();
+        // SAFETY: Valid RAM fixtures; the number is checked before indexing.
+        let _ = unsafe { FlexPad::__new_k3(128, &gpio, &mfpr) };
+    }
+
+    #[test]
+    fn temporary_modes_restore_after_panic() {
+        extern crate std;
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let (gpio, mfpr) = fixture();
+        let bank = gpio.bank(0).unwrap();
+        // SAFETY: Exclusive RAM fixtures, including simulated WO alias readback.
+        unsafe {
+            let mut input = FlexPad::__new_k3(0, &gpio, &mfpr).into_input();
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                input.with_output(PinState::High, |_| {
+                    bank.direction_clear.write(0);
+                    panic!();
+                });
+            }));
+            assert!(result.is_err());
+            assert_eq!(read(bank.direction_clear), 1);
+
+            let mut output = input.into_output(PinState::High);
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                output.with_input(|_| {
+                    bank.pin_output_set.write(0);
+                    bank.direction_set.write(0);
+                    panic!();
+                });
+            }));
+            assert!(result.is_err());
+            assert_eq!(
+                (read(bank.pin_output_set), read(bank.direction_set)),
+                (1, 1)
+            );
+            assert!(output.is_set_high().unwrap());
+        }
     }
 }

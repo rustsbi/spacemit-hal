@@ -78,6 +78,50 @@ impl_uart!(
     R_UART2, R_UART3, R_UART4, R_UART5
 );
 
+gpio_pads!(__new_k3);
+
+// UART routes on GPIO0..127: K3 user manual, sections 3.4.4 through 3.4.8.
+// https://github.com/spacemit-com/docs-chip/blob/d68a0caf7024a605f44ed818d41bab6786b6c999/en/key_stone/k3/k3_docs/k3_usermanual/03_pinout.md
+// Dedicated pads (such as the PWR_SSP UART0 console route) are not GPIO<N>.
+impl_uart_pads! {
+    (42, 2): IntoTransmit, into_uart_transmit, UART0;
+    (43, 2): IntoReceive, into_uart_receive, UART0;
+    (93, 3): IntoTransmit, into_uart_transmit, UART0;
+    (94, 3): IntoReceive, into_uart_receive, UART0;
+    (97, 1): IntoTransmit, into_uart_transmit, UART2;
+    (98, 1): IntoReceive, into_uart_receive, UART2;
+    (26, 2): IntoTransmit, into_uart_transmit, UART3;
+    (27, 2): IntoReceive, into_uart_receive, UART3;
+    (55, 2): IntoReceive, into_uart_receive, UART3;
+    (56, 2): IntoTransmit, into_uart_transmit, UART3;
+    (86, 3): IntoTransmit, into_uart_transmit, UART4;
+    (87, 3): IntoReceive, into_uart_receive, UART4;
+    (99, 3): IntoTransmit, into_uart_transmit, UART4;
+    (100, 3): IntoReceive, into_uart_receive, UART4;
+    (21, 2): IntoTransmit, into_uart_transmit, UART5;
+    (22, 2): IntoReceive, into_uart_receive, UART5;
+    (82, 4): IntoReceive, into_uart_receive, UART5;
+    (83, 4): IntoTransmit, into_uart_transmit, UART5;
+    (48, 2): IntoTransmit, into_uart_transmit, UART6;
+    (49, 2): IntoReceive, into_uart_receive, UART6;
+    (122, 3): IntoTransmit, into_uart_transmit, UART6;
+    (123, 3): IntoReceive, into_uart_receive, UART6;
+    (13, 2): IntoTransmit, into_uart_transmit, UART7;
+    (14, 2): IntoReceive, into_uart_receive, UART7;
+    (23, 5): IntoTransmit, into_uart_transmit, UART7;
+    (24, 5): IntoReceive, into_uart_receive, UART7;
+    (11, 5): IntoReceive, into_uart_receive, UART8;
+    (12, 5): IntoTransmit, into_uart_transmit, UART8;
+    (76, 3): IntoTransmit, into_uart_transmit, UART8;
+    (77, 3): IntoReceive, into_uart_receive, UART8;
+    (84, 3): IntoTransmit, into_uart_transmit, UART9;
+    (85, 3): IntoReceive, into_uart_receive, UART9;
+    (31, 2): IntoTransmit, into_uart_transmit, UART10;
+    (32, 2): IntoReceive, into_uart_receive, UART10;
+    (44, 2): IntoTransmit, into_uart_transmit, UART10;
+    (45, 2): IntoReceive, into_uart_receive, UART10;
+}
+
 apbc_clocks! {
     APBC, apbc::k3::RegisterBlock;
     uart {
@@ -123,16 +167,14 @@ pub struct Peripherals {
     pub apbs: APBS,
     /// Main power-management peripheral.
     pub mpmu: MPMU,
-    /// Multi-function pad peripheral.
-    pub mfpr: MFPR,
     /// Quad-SPI memory-controller peripheral.
     pub qspi: QSPI,
     /// Exclusive APBC clock tokens.
     pub apbc_clocks: ApbcClocks<'static>,
     /// Application-processor power, clock, and reset peripheral.
     pub apmu: APMU,
-    /// GPIO peripheral.
-    pub gpio: GPIO,
+    /// Exclusive GPIO pad tokens.
+    pub gpio: GpioPads,
     /// UART0 peripheral.
     pub uart0: UART0,
     /// UART1 peripheral.
@@ -173,8 +215,7 @@ impl Peripherals {
     /// Acquires peripheral tokens once across all harts and SoC modules.
     ///
     /// # Safety
-    /// The hardware-access requirements of `steal` must hold; consumed UART
-    /// and APBC clock tokens require a permanently valid register mapping.
+    /// The hardware-access requirements of [`Self::steal`] must hold.
     pub unsafe fn take() -> Option<Self> {
         if !super::claim_peripherals(&super::PERIPHERALS_TAKEN) {
             return None;
@@ -186,14 +227,11 @@ impl Peripherals {
     /// Acquires peripheral tokens without initializing hardware or checking ownership.
     ///
     /// # Safety
-    ///
-    /// The caller must run on K3 with each used register block identity-mapped,
-    /// aligned, and accessible at the current privilege level, including UART1's
-    /// secure domain; power, clocks, and reset must permit every register access.
-    /// These conditions must hold for all register borrows, permanently for
-    /// consumed UART tokens and APBC clock tokens, and no other tokens,
-    /// drivers, harts, interrupt handlers, DMA, or OS may concurrently access the
-    /// same peripherals, including through the other SoC module.
+    /// Run on K3 with aligned, identity-mapped registers accessible at the current
+    /// privilege level, including secure UART1; retain valid power, upstream clocks
+    /// and reset for every access, permanently for consumed tokens and pad/clock tokens.
+    /// Stop conflicting users and DMA, including former pad users; no hart, firmware
+    /// or duplicate owner may invalidate these guarantees, even after drop or forget.
     #[inline]
     pub unsafe fn steal() -> Self {
         super::PERIPHERALS_TAKEN.store(true, core::sync::atomic::Ordering::Release);
@@ -225,9 +263,6 @@ impl Peripherals {
             mpmu: MPMU {
                 _private: core::marker::PhantomData,
             },
-            mfpr: MFPR {
-                _private: core::marker::PhantomData,
-            },
             qspi: QSPI {
                 _private: core::marker::PhantomData,
             },
@@ -236,9 +271,8 @@ impl Peripherals {
             apmu: APMU {
                 _private: core::marker::PhantomData,
             },
-            gpio: GPIO {
-                _private: core::marker::PhantomData,
-            },
+            // SAFETY: The caller transfers all GPIO bits and MFPR registers once.
+            gpio: unsafe { GpioPads::new() },
             uart0: UART0 {
                 _private: core::marker::PhantomData,
             },

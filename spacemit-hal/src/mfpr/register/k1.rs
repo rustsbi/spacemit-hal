@@ -5,8 +5,8 @@ use volatile_register::RW;
 
 // Pin offsets: spacemit_k1_pin_to_offset in Linux pinctrl-k1.c.
 // https://github.com/torvalds/linux/blob/master/drivers/pinctrl/spacemit/pinctrl-k1.c
-// GPIO0..127 have gaps and reordered groups; this is not a pinctrl driver.
-// Bit 6 clears edge detection; writes must account for that side effect.
+// GPIO0..127 have gaps and reordered groups.
+// Bit 6 (EDGE_CLEAR) is RW: preserve its edge-disable state when changing mux.
 // Offsets 0x228/0x22c are GPIO118/119, not the dedicated PWR_SCL/PWR_SDA pads.
 
 /// K1 multi-function pad registers.

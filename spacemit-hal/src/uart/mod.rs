@@ -2,10 +2,14 @@
 
 mod blocking;
 mod config;
+mod ext;
+mod pads;
 mod register;
 
 pub use blocking::{BlockingUart, Error};
 pub use config::{Baud, Config, Parity, StopBits, WordLength};
+pub use ext::UartExt;
+pub use pads::{IntoReceive, IntoTransmit, Pads};
 pub use register::RegisterBlock;
 pub use uart16550;
 
@@ -18,10 +22,9 @@ pub trait Instance<'a> {
 /// A UART instance whose identity matches an exclusive APBC clock token.
 ///
 /// # Safety
-/// ClockId must name this UART's SoC and instance. Consuming register_block
-/// must transfer exclusive access for 'a to its returned reference without
-/// disabling hardware or invalidating its mapping; no owner may be recreated
-/// through safe code while the returned register borrow remains live.
+/// ClockId must identify this UART; register_block must transfer exclusive access
+/// for 'a without recreating owners, with valid mappings and no conflicting users
+/// or DMA; power and upstream clocks must permit access whenever its APBC gate is enabled.
 pub unsafe trait ClockedInstance<'a>: Instance<'a> {
     /// The matching SoC-specific UART clock identity.
     type ClockId: crate::clock::UartId;
