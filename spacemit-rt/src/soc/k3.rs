@@ -78,6 +78,31 @@ impl_uart!(
     R_UART2, R_UART3, R_UART4, R_UART5
 );
 
+apbc_clocks! {
+    APBC, apbc::k3::RegisterBlock;
+    uart {
+        UART0 => uart0, uart0_clock_reset;
+        UART2 => uart2, uart2_clock_reset;
+        UART3 => uart3, uart3_clock_reset;
+        UART4 => uart4, uart4_clock_reset;
+        UART5 => uart5, uart5_clock_reset;
+        UART6 => uart6, uart6_clock_reset;
+        UART7 => uart7, uart7_clock_reset;
+        UART8 => uart8, uart8_clock_reset;
+        UART9 => uart9, uart9_clock_reset;
+        UART10 => uart10, uart10_clock_reset;
+    }
+    i2c {
+        I2C0 => i2c0, twsi0_clock_reset, from_register;
+        I2C1 => i2c1, twsi1_clock_reset, from_register;
+        I2C2 => i2c2, twsi2_clock_reset, from_register;
+        I2C4 => i2c4, twsi4_clock_reset, from_register;
+        I2C5 => i2c5, twsi5_clock_reset, from_register;
+        I2C6 => i2c6, twsi6_clock_reset, from_register;
+        I2C8 => i2c8, twsi8_clock_reset, from_register;
+    }
+}
+
 /// K3 peripheral ownership.
 pub struct Peripherals {
     /// I2C0 (TWSI0) peripheral.
@@ -102,8 +127,8 @@ pub struct Peripherals {
     pub mfpr: MFPR,
     /// Quad-SPI memory-controller peripheral.
     pub qspi: QSPI,
-    /// APB clock and reset peripheral.
-    pub apbc: APBC,
+    /// Exclusive APBC clock tokens.
+    pub apbc_clocks: ApbcClocks<'static>,
     /// Application-processor power, clock, and reset peripheral.
     pub apmu: APMU,
     /// GPIO peripheral.
@@ -149,7 +174,7 @@ impl Peripherals {
     ///
     /// # Safety
     /// The hardware-access requirements of `steal` must hold; consumed UART
-    /// tokens require a permanently valid register mapping.
+    /// and APBC clock tokens require a permanently valid register mapping.
     pub unsafe fn take() -> Option<Self> {
         if !super::claim_peripherals(&super::PERIPHERALS_TAKEN) {
             return None;
@@ -166,7 +191,7 @@ impl Peripherals {
     /// aligned, and accessible at the current privilege level, including UART1's
     /// secure domain; power, clocks, and reset must permit every register access.
     /// These conditions must hold for all register borrows, permanently for
-    /// consumed UART tokens, and no other tokens,
+    /// consumed UART tokens and APBC clock tokens, and no other tokens,
     /// drivers, harts, interrupt handlers, DMA, or OS may concurrently access the
     /// same peripherals, including through the other SoC module.
     #[inline]
@@ -206,9 +231,8 @@ impl Peripherals {
             qspi: QSPI {
                 _private: core::marker::PhantomData,
             },
-            apbc: APBC {
-                _private: core::marker::PhantomData,
-            },
+            // SAFETY: The caller transfers exclusive, permanently mapped APBC access.
+            apbc_clocks: unsafe { ApbcClocks::new() },
             apmu: APMU {
                 _private: core::marker::PhantomData,
             },
@@ -310,10 +334,6 @@ mod tests {
                 + core::mem::offset_of!(mpmu::k3::RegisterBlock, application_clock_gate),
             0xd405_1024
         );
-        fn apbc_type<
-            T: Deref<Target = apbc::k3::RegisterBlock> + AsRef<apbc::k3::RegisterBlock>,
-        >() {
-        }
         fn apmu_type<
             T: Deref<Target = apmu::k3::RegisterBlock> + AsRef<apmu::k3::RegisterBlock>,
         >() {
@@ -332,7 +352,6 @@ mod tests {
         {
         }
 
-        apbc_type::<APBC>();
         apmu_type::<APMU>();
         gpio_type::<GPIO>();
         uart_type::<UART0>();
@@ -352,6 +371,7 @@ mod tests {
         uart_type::<R_UART3>();
         uart_type::<R_UART4>();
         uart_type::<R_UART5>();
+        register_type::<APBC, apbc::k3::RegisterBlock>();
         assert_eq!(APBC::ptr() as usize, 0xd401_5000);
         assert_eq!(APMU::ptr() as usize, 0xd428_2800);
         assert_eq!(
@@ -376,6 +396,9 @@ mod tests {
         assert_eq!(R_UART3::ptr() as usize, 0xc088_1300);
         assert_eq!(R_UART4::ptr() as usize, 0xc088_1400);
         assert_eq!(R_UART5::ptr() as usize, 0xc088_1500);
-        assert_eq!(core::mem::size_of::<Peripherals>(), 0);
+        assert_eq!(
+            core::mem::size_of::<Peripherals>(),
+            core::mem::size_of::<ApbcClocks<'static>>()
+        );
     }
 }

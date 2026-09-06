@@ -1,7 +1,8 @@
 //! Configurable polling UART I/O.
 
-use super::{Config, Instance, Parity, RegisterBlock, StopBits, WordLength};
-use core::{fmt, hint::spin_loop};
+use super::{ClockedInstance, Config, Instance, Parity, RegisterBlock, StopBits, WordLength};
+use crate::clock::{self, Hertz, UartClock, UartClockRef};
+use core::{fmt, hint::spin_loop, marker::PhantomData};
 use uart16550::LineStatus;
 
 /// Receive faults accumulated from the line-status register.
@@ -49,24 +50,56 @@ impl embedded_io::Error for Error {
 }
 
 /// An exclusively borrowed UART using polling without timeouts.
+#[must_use]
 pub struct BlockingUart<'a> {
     uart: &'a RegisterBlock,
+    clock: Option<&'a UartClockRef<'a>>,
     pending_error: Error,
+    _not_send_sync: PhantomData<*mut ()>,
 }
 
 impl<'a> BlockingUart<'a> {
+    /// Checks a matching clock token and configures polling at the existing baud.
+    ///
+    /// # Safety
+    /// UART mapping, power, pads, and divisor must be valid for 'a; transfers
+    /// must be idle and external DMA stopped. Exclusive UART and clock-source
+    /// access must remain valid for the borrow. Dropping or forgetting the driver
+    /// does not stop transfers; wait for TX completion before reconfiguration.
+    /// This function does not freeze upstream clocks.
+    pub unsafe fn new<U: ClockedInstance<'a>>(
+        uart: U,
+        clock: &'a mut UartClock<'_, U::ClockId>,
+        config: Config,
+    ) -> Result<Self, clock::Error> {
+        let clock = clock.borrow();
+        clock.check()?;
+        // Erase the instance types only after matching them, retaining both borrows.
+        Ok(Self::configure(uart.register_block(), Some(clock), config))
+    }
+
     /// Configures polling and resets FIFOs while retaining the current baud rate.
     ///
     /// # Safety
     /// The registers must refer to a live K1/M1 or K3 UART with its clocks,
     /// reset, pads, and baud rate configured; transfers must be idle and any
     /// external DMA engine stopped. No other code,
-    /// hart, or operating-system driver may access this UART until it is freed
-    /// or dropped, and its mapping and configuration must remain valid.
-    pub unsafe fn new(uart: impl Instance<'a>, config: Config) -> Self {
-        let uart = uart.register_block();
+    /// hart, or operating-system driver may access this UART for the borrow,
+    /// and its mapping and clock configuration must remain valid. Dropping or
+    /// forgetting the driver does not stop transfers; wait for TX completion
+    /// before reconfiguration.
+    pub unsafe fn from_bootrom(uart: impl Instance<'a>, config: Config) -> Self {
+        Self::configure(uart.register_block(), None, config)
+    }
+
+    fn configure(
+        uart: &'a RegisterBlock,
+        clock: Option<&'a UartClockRef<'a>>,
+        config: Config,
+    ) -> Self {
         use uart16550::{CharLen, LineControl};
-        // TODO: Program config.baudrate once the UART input clock is supplied.
+        // TODO: Program config.baudrate after validating a known input frequency
+        // and divisor error; adoption may deliberately retain an unknown rate.
         let length = match config.wordlength {
             WordLength::Five => CharLen::FIVE,
             WordLength::Six => CharLen::SIX,
@@ -87,18 +120,20 @@ impl<'a> BlockingUart<'a> {
         );
         Self {
             uart,
+            clock,
             pending_error: Error {
                 overrun: false,
                 parity: false,
                 framing: false,
                 break_detected: false,
             },
+            _not_send_sync: PhantomData,
         }
     }
 
-    /// Returns the register block without flushing or changing configuration.
-    pub fn free(self) -> &'a RegisterBlock {
-        self.uart
+    /// Returns the supplied UART input frequency, or None when unknown.
+    pub fn input_clock(&self) -> Option<Hertz> {
+        self.clock.and_then(UartClockRef::frequency)
     }
 
     fn status(&mut self) -> LineStatus {
@@ -176,6 +211,36 @@ mod tests {
     use core::cell::UnsafeCell;
     use embedded_io::{Read, Write};
 
+    enum TestUart0 {}
+    enum TestUart2 {}
+    // SAFETY: These markers identify distinct RAM-backed UARTs in each fixture.
+    unsafe impl clock::UartId for TestUart0 {}
+    // SAFETY: TestUart2 never identifies TestUart0's simulated registers.
+    unsafe impl clock::UartId for TestUart2 {}
+
+    struct TestInstance<'a, I>(&'a RegisterBlock, PhantomData<I>);
+
+    impl<'a, I> Instance<'a> for TestInstance<'a, I> {
+        fn register_block(self) -> &'a RegisterBlock {
+            self.0
+        }
+    }
+
+    // SAFETY: Tests pair each identity with its exclusive initialized RAM fixture;
+    // erasure retains that fixture's borrow and performs no teardown.
+    unsafe impl<'a, I: clock::UartId> ClockedInstance<'a> for TestInstance<'a, I> {
+        type ClockId = I;
+    }
+
+    fn clock_register(bits: u32) -> volatile_register::RW<crate::apbc::UartClockReset> {
+        // SAFETY: The wrapper is transparent over an initialized integer cell.
+        let register: volatile_register::RW<crate::apbc::UartClockReset> =
+            unsafe { core::mem::zeroed() };
+        // SAFETY: Exclusive initialization of a RAM-backed register.
+        unsafe { register.write(crate::apbc::UartClockReset::from_bits(bits)) };
+        register
+    }
+
     #[repr(C)]
     struct FakeUart([UnsafeCell<u32>; 8]);
 
@@ -204,17 +269,157 @@ mod tests {
 
         fn uart(&self) -> BlockingUart<'_> {
             // SAFETY: Tests use this RAM-backed UART sequentially, never hardware.
-            unsafe { BlockingUart::new(self.registers(), Config::default()) }
+            unsafe { BlockingUart::from_bootrom(self.registers(), Config::default()) }
         }
     }
 
     #[test]
-    fn constructor_configures_polling_and_free_retains_it() {
-        let fake = FakeUart::new(0);
+    fn generic_constructors_return_one_erased_driver_type() {
+        let first = FakeUart::new(0x60);
+        let second = FakeUart::new(0x60);
+        let gate0 = clock_register(3);
+        let gate2 = clock_register(0x13);
+        let frequencies =
+            clock::Clocks::new(Some(Hertz(57_600_000)), Some(Hertz(14_745_600)), None).unwrap();
+        // SAFETY: Each local token exclusively owns its simulated clock register.
+        let mut clock0 = unsafe { UartClock::from_register(&gate0, frequencies) };
+        // SAFETY: The second clock is disjoint from the first.
+        let mut clock2 = unsafe { UartClock::from_register(&gate2, frequencies) };
+        // SAFETY: Independent simulated UARTs, stable clock cells, no DMA or aliases.
+        let first = unsafe {
+            BlockingUart::new(
+                TestInstance::<TestUart0>(first.registers(), PhantomData),
+                &mut clock0,
+                Config::default(),
+            )
+            .unwrap()
+        };
+        // SAFETY: The second fixture and gate are disjoint from the first.
+        let second = unsafe {
+            BlockingUart::new(
+                TestInstance::<TestUart2>(second.registers(), PhantomData),
+                &mut clock2,
+                Config::default(),
+            )
+            .unwrap()
+        };
+        let mut ports: [BlockingUart<'_>; 2] = [first, second];
+        assert_eq!(ports[0].input_clock(), Some(Hertz(57_600_000)));
+        assert_eq!(ports[1].input_clock(), Some(Hertz(14_745_600)));
+        ports[0].write_byte(b'a');
+        ports[1].write_byte(b'b');
+        assert_eq!(gate0.read().bits(), 3);
+        assert_eq!(gate2.read().bits(), 0x13);
+    }
+
+    #[test]
+    fn invalid_clock_is_rejected_before_touching_uart_and_resources_survive() {
+        let fake = FakeUart::new(0x60);
+        fake.set(1, 0x55);
+        fake.set(2, 0x66);
+        fake.set(3, 0x77);
+        let gate = clock_register(0);
+        // SAFETY: The local token exclusively owns the simulated clock register.
+        let mut clock = unsafe { UartClock::from_register(&gate, clock::Clocks::unknown()) };
+        // SAFETY: The registers are valid RAM even with the simulated clock off;
+        // the driver must not access them until its clock check succeeds.
+        let error = unsafe {
+            BlockingUart::new(
+                TestInstance::<TestUart0>(fake.registers(), PhantomData),
+                &mut clock,
+                Config::default(),
+            )
+            .err()
+            .unwrap()
+        };
+        assert_eq!(error, clock::Error::Disabled);
+        assert_eq!([fake.get(1), fake.get(2), fake.get(3)], [0x55, 0x66, 0x77]);
+        // SAFETY: Emulate completion of platform clock recovery in this RAM fixture.
+        unsafe { gate.write(crate::apbc::UartClockReset::from_bits(3)) };
+        // SAFETY: Recovery restored the simulated clock; the original token is reused.
+        let mut uart = unsafe {
+            BlockingUart::new(
+                TestInstance::<TestUart0>(fake.registers(), PhantomData),
+                &mut clock,
+                Config::default(),
+            )
+            .unwrap()
+        };
+        assert_eq!(uart.input_clock(), None);
+        assert_eq!(fake.get(3), 3);
+        uart.flush();
+        assert_eq!(gate.read().bits(), 3);
+    }
+
+    #[test]
+    fn clock_outlives_driver_and_can_be_borrowed_again() {
+        let fake = FakeUart::new(0x60);
+        let gate = clock_register(3);
+        // SAFETY: The local token exclusively owns the simulated clock register.
+        let mut clock = unsafe { UartClock::from_register(&gate, clock::Clocks::unknown()) };
+        for &byte in b"xy" {
+            // SAFETY: Sequential borrows of idle RAM fixtures without DMA or IRQs.
+            let mut uart = unsafe {
+                BlockingUart::new(
+                    TestInstance::<TestUart0>(fake.registers(), PhantomData),
+                    &mut clock,
+                    Config::default(),
+                )
+                .unwrap()
+            };
+            uart.write_byte(byte);
+            uart.flush();
+        }
+        assert_eq!(clock.frequency(), None);
+        assert_eq!(gate.read().bits(), 3);
+        assert_eq!(fake.get(0), u32::from(b'y'));
+    }
+
+    #[test]
+    fn drop_and_forget_do_not_write_clock_registers() {
+        let fake = FakeUart::new(0x20);
+        let gate = clock_register(3);
+        // SAFETY: This token outlives both borrows of the simulated clock register.
+        let mut clock = unsafe { UartClock::from_register(&gate, clock::Clocks::unknown()) };
+        {
+            // SAFETY: The simulated UART and clock are exclusively owned here.
+            let mut uart = unsafe {
+                BlockingUart::new(
+                    TestInstance::<TestUart0>(fake.registers(), PhantomData),
+                    &mut clock,
+                    Config::default(),
+                )
+                .unwrap()
+            };
+            uart.write_byte(b'x');
+            // TX is still busy: leaving scope must neither wait nor disable clocks.
+        }
+        assert_eq!(gate.read().bits(), 3);
+        // Simulate hardware finishing TX before borrowing the original tokens again.
+        fake.set(5, 0x60);
+        // SAFETY: The original fixtures are idle and remain exclusively owned.
+        let uart = unsafe {
+            BlockingUart::new(
+                TestInstance::<TestUart0>(fake.registers(), PhantomData),
+                &mut clock,
+                Config::default(),
+            )
+            .unwrap()
+        };
+        // Keep this regression check if a future version adds a destructor.
+        #[allow(clippy::forget_non_drop)]
+        core::mem::forget(uart);
+        assert_eq!(clock.frequency(), None);
+        assert_eq!(gate.read().bits(), 3);
+    }
+
+    #[test]
+    fn constructor_configures_polling() {
+        let fake = FakeUart::new(0x60);
         fake.set(1, 0xff);
         fake.set(3, 0xff);
         let uart = fake.uart();
-        assert!(core::ptr::eq(uart.free(), fake.registers()));
+        assert!(core::ptr::eq(uart.uart, fake.registers()));
         assert_eq!(fake.get(1), 0x40);
         assert_eq!(fake.get(3), 0x03);
         assert_eq!(fake.get(2), 0x07);
@@ -230,13 +435,13 @@ mod tests {
         ] {
             for (parity, parity_bits) in [(Parity::None, 0), (Parity::Odd, 8), (Parity::Even, 24)] {
                 for (stopbits, stop_bit) in [(StopBits::One, 0), (StopBits::Two, 4)] {
-                    let fake = FakeUart::new(0);
+                    let fake = FakeUart::new(0x60);
                     fake.set(0, 0xab);
                     fake.set(3, 0xff);
                     fake.set(7, 0x1234);
                     // SAFETY: Exclusive sequential access to an aligned RAM fixture.
-                    let uart = unsafe {
-                        BlockingUart::new(
+                    let _uart = unsafe {
+                        BlockingUart::from_bootrom(
                             fake.registers(),
                             Config {
                                 wordlength,
@@ -251,7 +456,6 @@ mod tests {
                     assert_eq!(fake.get(2), 7);
                     assert_eq!(fake.get(0), 0xab);
                     assert_eq!(fake.get(7), 0x1234);
-                    let _ = uart.free();
                 }
             }
         }

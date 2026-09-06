@@ -6,6 +6,7 @@
 pub mod apbc;
 pub mod apbs;
 pub mod apmu;
+pub mod clock;
 pub mod counter;
 pub mod gpio;
 pub mod i2c;

@@ -10,15 +10,17 @@ use spacemit_rt::{Peripherals, entry};
 #[entry]
 fn main() {
     // SAFETY: K1/M1 MMIO is identity-mapped; take grants access to only one hart.
-    let Some(p) = (unsafe { Peripherals::take() }) else {
+    let Some(mut p) = (unsafe { Peripherals::take() }) else {
         return;
     };
-    if !p.apbc.uart0_clock_reset.read().is_enabled() {
-        return;
-    }
     // SAFETY: BootROM left UART0 idle with live clocks, pads, and divisor;
-    // no other hart, interrupt handler, or DMA engine accesses it.
-    let mut uart = unsafe { BlockingUart::new(p.uart0, Config::default()) };
+    // no other hart, interrupt handler, or DMA engine accesses it, and this
+    // platform retains BootROM's upstream clock configuration.
+    let Ok(mut uart) =
+        (unsafe { BlockingUart::new(&mut p.uart0, &mut p.apbc_clocks.uart0, Config::default()) })
+    else {
+        return;
+    };
     writeln!(uart, "hello world\r").unwrap();
     uart.flush();
 }
