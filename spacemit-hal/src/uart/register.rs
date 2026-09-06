@@ -5,14 +5,60 @@
 // https://github.com/torvalds/linux/blob/master/Documentation/devicetree/bindings/serial/8250.yaml
 // https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k1.dtsi
 // https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k3.dtsi
-// This prefix does not model scratch/IR registers or XScale IER.UUE (bit 6),
-// RTOIE (bit 4), and DMAE (bit 7); it is not a complete XScale initialization API.
 // Unlike Allwinner's DesignWare UART, polling here does not use USR at 0x7c.
 // K3 pico-ITX's running DT also uses spacemit,k1-uart as its vendor compatible;
 // its console at d4017000 has the same xscale fallback, stride, and access width.
 
-/// The 16550-compatible register prefix shared by K1/M1 and K3 UARTs.
-pub type RegisterBlock = uart16550::Uart16550<u32>;
+use volatile_register::RW;
+
+/// K1/M1 and K3 UART registers.
+#[repr(C)]
+pub struct RegisterBlock {
+    uart16550: uart16550::Uart16550<u32>,
+    /// Scratch register.
+    pub scratch: RW<u32>,
+}
+
+impl core::ops::Deref for RegisterBlock {
+    type Target = uart16550::Uart16550<u32>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.uart16550
+    }
+}
+
+impl RegisterBlock {
+    // The dependency's transparent UnsafeCell<u32> registers permit these
+    // overlapping volatile views; extensions do not occupy additional addresses.
+    pub(super) fn configure_polling(&self, line: uart16550::LineControl, parity: u32) {
+        self.lcr().write(line);
+        // SAFETY: Each pointer targets a live aligned UnsafeCell<u32> register.
+        // The caller holds exclusive UART access and line has DLAB cleared.
+        unsafe {
+            let lcr = (self.lcr() as *const uart16550::LCR<u32>)
+                .cast::<u32>()
+                .cast_mut();
+            // uart16550 0.0.1's PARITY encodings are incorrect; replace bits 3..5.
+            lcr.write_volatile((lcr.read_volatile() & !0x38) | parity);
+            let ier = (self.ier() as *const uart16550::IER<u32>)
+                .cast::<u32>()
+                .cast_mut();
+            // XScale UUE=1; all interrupt enables and DMAE=0.
+            ier.write_volatile(1 << 6);
+            let fcr = (self.iir_fcr() as *const uart16550::IIR_FCR<u32>)
+                .cast::<u32>()
+                .cast_mut();
+            // Exact WO command: enable and reset both FIFOs, DMA select=0.
+            // uart16550 0.0.1 does not expose the FIFO enable bit.
+            fcr.write_volatile(0x07);
+        }
+        #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+        // SAFETY: Orders device accesses without touching memory or the stack.
+        unsafe {
+            core::arch::asm!("fence iorw, iorw", options(nostack))
+        };
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -31,7 +77,8 @@ mod tests {
         assert_eq!(uart.mcr() as *const _ as usize - base, 0x10);
         assert_eq!(uart.lsr() as *const _ as usize - base, 0x14);
         assert_eq!(uart.msr() as *const _ as usize - base, 0x18);
-        assert_eq!(size_of::<RegisterBlock>(), 0x1c);
+        assert_eq!(core::mem::offset_of!(RegisterBlock, scratch), 0x1c);
+        assert_eq!(size_of::<RegisterBlock>(), 0x20);
         assert_eq!(align_of::<RegisterBlock>(), 4);
     }
 }

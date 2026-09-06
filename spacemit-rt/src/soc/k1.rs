@@ -66,6 +66,10 @@ soc! {
     pub struct R_UART1 => 0xc088_d000, uart::RegisterBlock;
 }
 
+impl_uart!(
+    UART0, UART1, UART2, UART3, UART4, UART5, UART6, UART7, UART8, UART9, R_UART0, R_UART1
+);
+
 /// K1/M1 peripheral ownership.
 pub struct Peripherals {
     /// I2C0 (TWSI0) peripheral.
@@ -127,6 +131,19 @@ pub struct Peripherals {
 }
 
 impl Peripherals {
+    /// Acquires peripheral tokens once across all harts and SoC modules.
+    ///
+    /// # Safety
+    /// The hardware-access requirements of `steal` must hold; consumed UART
+    /// tokens require a permanently valid register mapping.
+    pub unsafe fn take() -> Option<Self> {
+        if !super::claim_peripherals(&super::PERIPHERALS_TAKEN) {
+            return None;
+        }
+        // SAFETY: the caller establishes hardware access; the atomic claims ownership.
+        Some(unsafe { Self::steal() })
+    }
+
     /// Acquires peripheral tokens without initializing hardware or checking ownership.
     ///
     /// # Safety
@@ -134,11 +151,13 @@ impl Peripherals {
     /// The caller must run on K1/M1 with each used register block identity-mapped,
     /// aligned, and accessible at the current privilege level, including UART1's
     /// secure domain; power, clocks, and reset must permit every register access.
-    /// These conditions must hold for all register borrows, and no other tokens,
+    /// These conditions must hold for all register borrows, permanently for
+    /// consumed UART tokens, and no other tokens,
     /// drivers, harts, interrupt handlers, DMA, or OS may concurrently access the
     /// same peripherals, including through the other SoC module.
     #[inline]
-    pub const unsafe fn steal() -> Self {
+    pub unsafe fn steal() -> Self {
+        super::PERIPHERALS_TAKEN.store(true, core::sync::atomic::Ordering::Release);
         Self {
             i2c0: I2C0 {
                 _private: core::marker::PhantomData,
@@ -284,7 +303,15 @@ mod tests {
             T: Deref<Target = gpio::k1::RegisterBlock> + AsRef<gpio::k1::RegisterBlock>,
         >() {
         }
-        fn uart_type<T: Deref<Target = uart::RegisterBlock> + AsRef<uart::RegisterBlock>>() {}
+        fn uart_type<
+            T: Deref<Target = uart::RegisterBlock>
+                + AsRef<uart::RegisterBlock>
+                + uart::Instance<'static>,
+        >()
+        where
+            for<'a> &'a mut T: uart::Instance<'a>,
+        {
+        }
 
         apbc_type::<APBC>();
         apmu_type::<APMU>();

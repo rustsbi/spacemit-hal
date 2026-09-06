@@ -1,6 +1,6 @@
-//! Polling I/O for an already configured UART.
+//! Configurable polling UART I/O.
 
-use super::RegisterBlock;
+use super::{Config, Instance, Parity, RegisterBlock, StopBits, WordLength};
 use core::{fmt, hint::spin_loop};
 use uart16550::LineStatus;
 
@@ -55,15 +55,36 @@ pub struct BlockingUart<'a> {
 }
 
 impl<'a> BlockingUart<'a> {
-    /// Borrows an already configured UART without changing its registers.
+    /// Configures polling and resets FIFOs while retaining the current baud rate.
     ///
     /// # Safety
     /// The registers must refer to a live K1/M1 or K3 UART with its clocks,
-    /// reset, pads, baud rate, and frame format configured, IER.UUE set, and
-    /// LCR.DLAB clear. Interrupts and DMA must be disabled. No other code,
+    /// reset, pads, and baud rate configured; transfers must be idle and any
+    /// external DMA engine stopped. No other code,
     /// hart, or operating-system driver may access this UART until it is freed
     /// or dropped, and its mapping and configuration must remain valid.
-    pub const unsafe fn new(uart: &'a RegisterBlock) -> Self {
+    pub unsafe fn new(uart: impl Instance<'a>, config: Config) -> Self {
+        let uart = uart.register_block();
+        use uart16550::{CharLen, LineControl};
+        // TODO: Program config.baudrate once the UART input clock is supplied.
+        let length = match config.wordlength {
+            WordLength::Five => CharLen::FIVE,
+            WordLength::Six => CharLen::SIX,
+            WordLength::Seven => CharLen::SEVEN,
+            WordLength::Eight => CharLen::EIGHT,
+        };
+        let parity = match config.parity {
+            Parity::None => 0,
+            Parity::Odd => 0x08,
+            Parity::Even => 0x18,
+        };
+        uart.configure_polling(
+            LineControl::default()
+                .set_char_len(length)
+                .set_one_stop_bit(matches!(config.stopbits, StopBits::One))
+                .disable_dlr_access(),
+            parity,
+        );
         Self {
             uart,
             pending_error: Error {
@@ -155,7 +176,8 @@ mod tests {
     use core::cell::UnsafeCell;
     use embedded_io::{Read, Write};
 
-    struct FakeUart([UnsafeCell<u32>; 7]);
+    #[repr(C)]
+    struct FakeUart([UnsafeCell<u32>; 8]);
 
     impl FakeUart {
         fn new(lsr: u32) -> Self {
@@ -175,26 +197,64 @@ mod tests {
         }
 
         fn registers(&self) -> &RegisterBlock {
-            // SAFETY: Uart16550<u32> is seven repr(transparent) UnsafeCell<u32>
+            // SAFETY: The UART block is eight repr(transparent) UnsafeCell<u32>
             // fields in a repr(C) block, matching this live, aligned RAM array.
             unsafe { &*self.0.as_ptr().cast::<RegisterBlock>() }
         }
 
         fn uart(&self) -> BlockingUart<'_> {
             // SAFETY: Tests use this RAM-backed UART sequentially, never hardware.
-            unsafe { BlockingUart::new(self.registers()) }
+            unsafe { BlockingUart::new(self.registers(), Config::default()) }
         }
     }
 
     #[test]
-    fn constructor_and_free_preserve_configuration() {
+    fn constructor_configures_polling_and_free_retains_it() {
         let fake = FakeUart::new(0);
-        fake.set(1, 0x40);
-        fake.set(3, 0x03);
+        fake.set(1, 0xff);
+        fake.set(3, 0xff);
         let uart = fake.uart();
         assert!(core::ptr::eq(uart.free(), fake.registers()));
         assert_eq!(fake.get(1), 0x40);
         assert_eq!(fake.get(3), 0x03);
+        assert_eq!(fake.get(2), 0x07);
+    }
+
+    #[test]
+    fn constructor_maps_all_frame_formats() {
+        for (wordlength, bits) in [
+            (WordLength::Five, 0),
+            (WordLength::Six, 1),
+            (WordLength::Seven, 2),
+            (WordLength::Eight, 3),
+        ] {
+            for (parity, parity_bits) in [(Parity::None, 0), (Parity::Odd, 8), (Parity::Even, 24)] {
+                for (stopbits, stop_bit) in [(StopBits::One, 0), (StopBits::Two, 4)] {
+                    let fake = FakeUart::new(0);
+                    fake.set(0, 0xab);
+                    fake.set(3, 0xff);
+                    fake.set(7, 0x1234);
+                    // SAFETY: Exclusive sequential access to an aligned RAM fixture.
+                    let uart = unsafe {
+                        BlockingUart::new(
+                            fake.registers(),
+                            Config {
+                                wordlength,
+                                parity,
+                                stopbits,
+                                ..Config::default()
+                            },
+                        )
+                    };
+                    assert_eq!(fake.get(3), bits | parity_bits | stop_bit);
+                    assert_eq!(fake.get(1), 0x40);
+                    assert_eq!(fake.get(2), 7);
+                    assert_eq!(fake.get(0), 0xab);
+                    assert_eq!(fake.get(7), 0x1234);
+                    let _ = uart.free();
+                }
+            }
+        }
     }
 
     #[test]

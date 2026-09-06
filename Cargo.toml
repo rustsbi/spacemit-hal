@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt", "examples/*"]
+members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt", "spacemit-rt/macros", "examples/*"]
 default-members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt", "examples/*"]
 
 [workspace.package]
@@ -9,8 +9,10 @@ license = "MulanPSL-2.0 OR MIT"
 repository = "https://atomgit.com/rustsbi/spacemit-hal"
 
 [workspace.dependencies]
+cfg-if = "1.0.4"
 embedded-hal = "1.0.0"
 embedded-io = "0.7.1"
+embedded-time = "0.12.1"
 riscv = { version = "0.16.1", default-features = false }
 spacemit-hal = { version = "0.0.0", path = "spacemit-hal" }
 spacemit-riscv = { version = "0.0.0", path = "spacemit-riscv" }

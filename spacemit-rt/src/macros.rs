@@ -43,6 +43,26 @@ macro_rules! soc {
     };
 }
 
+macro_rules! impl_uart {
+    ($($uart:ident),+ $(,)?) => {
+        $(
+            impl spacemit_hal::uart::Instance<'static> for $uart {
+                fn register_block(self) -> &'static spacemit_hal::uart::RegisterBlock {
+                    // SAFETY: acquiring the token requires a permanently valid mapping;
+                    // consuming it prevents further access through that token.
+                    unsafe { &*Self::ptr() }
+                }
+            }
+
+            impl<'a> spacemit_hal::uart::Instance<'a> for &'a mut $uart {
+                fn register_block(self) -> &'a spacemit_hal::uart::RegisterBlock {
+                    self
+                }
+            }
+        )+
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use core::sync::atomic::{AtomicU32, Ordering};

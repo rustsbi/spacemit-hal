@@ -13,7 +13,41 @@ categories = ["os", "embedded", "hardware-support", "no-std"]
 [package.metadata.docs.rs]
 default-target = "riscv64imac-unknown-none-elf"
 targets = ["riscv64imac-unknown-none-elf"]
+features = ["k3-cpu"]
 
 [dependencies]
+spacemit-rt-macros = { version = "0.0.0", path = "macros" }
+cfg-if = { workspace = true }
 spacemit-hal = { workspace = true }
 spacemit-riscv = { workspace = true }
+
+[features]
+default = []
+
+# SoC hart cluster specific features.
+# K1 and M1 share X60 application clusters and an N308 real-time core.
+k1-cpu = ["spacemit-x60"]
+k1-mcu = ["nuclei-n308"]
+# K3 has X100 application, A100 AI, and RT24 real-time core groups.
+k3-cpu = ["spacemit-x100"]
+k3-ai = ["spacemit-a100"]
+k3-mcu = ["spacemit-rt24"]
+
+# Microarchitecture specific features.
+nuclei-n308 = []
+spacemit-a100 = []
+spacemit-rt24 = []
+spacemit-x100 = []
+spacemit-x60 = []
+
+[[example]]
+name = "arch-link"
+path = "tests/arch/entry.rs"
+test = false
+bench = false
+
+[[example]]
+name = "multihart"
+path = "tests/arch/multihart.rs"
+test = false
+bench = false

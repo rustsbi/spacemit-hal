@@ -1,0 +1,21 @@
+[package]
+name = "rot-bootloader"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+embedded-io.workspace = true
+spacemit-hal.workspace = true
+spacemit-rt = { path = "../../spacemit-rt" }
+
+[features]
+default = ["spacemit-rt/k1-cpu"]
+
+[[bin]]
+name = "rot-bootloader"
+path = "src/main.rs"
+test = false
+bench = false
