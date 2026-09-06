@@ -21,7 +21,7 @@ fn main() {
     ) else {
         return;
     };
-    writeln!(uart, "hello world\r").unwrap();
+    writeln!(uart, "Hello world!").unwrap();
     uart.flush();
 }
 

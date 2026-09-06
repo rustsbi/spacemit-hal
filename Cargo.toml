@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt", "spacemit-rt/macros", "examples/*"]
+members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt", "spacemit-rt/macros", "examples/*", "xtask"]
 default-members = ["spacemit-hal", "spacemit-riscv", "spacemit-rt", "examples/*"]
 
 [workspace.package]

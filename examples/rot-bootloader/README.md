@@ -1,6 +1,13 @@
 # rot-bootloader
 
-```powershell
+Install Rust target:
+
+```
 rustup target add riscv64imac-unknown-none-elf
-cargo build -p rot-bootloader --release --target riscv64imac-unknown-none-elf
+```
+
+Run the example on board:
+
+```
+cargo run -p rot-bootloader --release --target riscv64imac-unknown-none-elf
 ```
