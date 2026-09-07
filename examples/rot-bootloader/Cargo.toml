@@ -11,19 +11,27 @@ default-run = "rot-bootloader"
 eeprom24x = "0.7.2"
 embedded-hal.workspace = true
 embedded-io.workspace = true
+embedded-storage.workspace = true
 measurements.workspace = true
 riscv.workspace = true
+qspi-nor.workspace = true
 rot-bootloader-macros = { path = "macros" }
 spacemit-hal.workspace = true
 spacemit-p1.workspace = true
 spacemit-rt.workspace = true
 spin = { version = "0.9.9", default-features = false, features = ["once", "spin_mutex"] }
+ufmt = "0.2.0"
 
 [features]
-default = ["spacemit-rt/k1-bootrom"]
+default = ["spacemit-rt/k1-bootrom", "ddr"]
+ddr = []
+
+[build-dependencies]
+sha2 = "0.10"
 
 [[bin]]
 name = "rot-bootloader"
+required-features = ["ddr"]
 test = false
 bench = false
 

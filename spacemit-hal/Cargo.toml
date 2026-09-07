@@ -15,6 +15,7 @@ default-target = "riscv64imac-unknown-none-elf"
 targets = ["riscv64imac-unknown-none-elf"]
 
 [dependencies]
+qspi-nor.workspace = true
 embedded-hal = { workspace = true }
 embedded-io = { workspace = true }
 embedded-time = { workspace = true }

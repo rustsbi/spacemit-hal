@@ -12,3 +12,6 @@ clap = { version = "4", features = ["derive"] }
 object = { version = "0.40", default-features = false, features = ["read", "std", "elf"] }
 rsa = { version = "0.9", features = ["sha2"] }
 sha2 = { version = "0.10", features = ["oid"] }
+embedded-storage.workspace = true
+qspi-nor.workspace = true
+spacemit-hal.workspace = true

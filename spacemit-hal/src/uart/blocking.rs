@@ -58,8 +58,7 @@ impl embedded_io::Error for Error {
 #[must_use]
 pub struct BlockingUart<'a> {
     uart: &'a RegisterBlock,
-    clock: Option<UartFrequencyRef<'a>>,
-    baudrate: Option<super::Baud>,
+    _clock: PhantomData<UartFrequencyRef<'a>>,
     _pads: PhantomData<(FlexPad<'a>, FlexPad<'a>)>,
     pending_error: Error,
     _not_send_sync: PhantomData<*mut ()>,
@@ -74,12 +73,11 @@ impl<'a> BlockingUart<'a> {
         clock: UartFrequency<'a, U::ClockId>,
         config: Config,
     ) -> Result<Self, clock::Error> {
-        let (divisor, baudrate) = baud_divisor(clock.frequency(), config.baudrate)?;
+        let divisor = baud_divisor(clock.frequency(), config.baudrate)?;
         let _pads = pads.into_uart_pads();
         // Erase identities only after matching them, retaining every resource.
-        let mut driver = Self::configure(uart.register_block(), Some(clock.inner), config);
+        let driver = Self::configure(uart.register_block(), config);
         driver.uart.set_divisor(divisor);
-        driver.baudrate = Some(baudrate);
         Ok(driver)
     }
 
@@ -90,15 +88,11 @@ impl<'a> BlockingUart<'a> {
     /// mappings, power, clocks and reset; conflicting users and DMA must be stopped.
     #[inline]
     pub unsafe fn from_bootrom(uart: impl Instance<'a>, config: Config) -> Self {
-        Self::configure(uart.register_block(), None, config)
+        Self::configure(uart.register_block(), config)
     }
 
     #[inline]
-    fn configure(
-        uart: &'a RegisterBlock,
-        clock: Option<UartFrequencyRef<'a>>,
-        config: Config,
-    ) -> Self {
+    fn configure(uart: &'a RegisterBlock, config: Config) -> Self {
         use uart16550::{CharLen, LineControl};
         let length = match config.wordlength {
             WordLength::Five => CharLen::FIVE,
@@ -120,8 +114,7 @@ impl<'a> BlockingUart<'a> {
         );
         Self {
             uart,
-            clock,
-            baudrate: None,
+            _clock: PhantomData,
             _pads: PhantomData,
             pending_error: Error {
                 overrun: false,
@@ -131,18 +124,6 @@ impl<'a> BlockingUart<'a> {
             },
             _not_send_sync: PhantomData,
         }
-    }
-
-    /// Returns the verified UART input frequency, or None for raw adoption.
-    #[inline]
-    pub fn input_clock(&self) -> Option<Hertz> {
-        self.clock.as_ref().map(|clock| clock.frequency)
-    }
-
-    /// Returns the programmed baud rate rounded to an integer, or None for raw adoption.
-    #[inline]
-    pub const fn baudrate(&self) -> Option<super::Baud> {
-        self.baudrate
     }
 
     #[inline]
@@ -191,7 +172,7 @@ impl<'a> BlockingUart<'a> {
 }
 
 #[inline]
-fn baud_divisor(input: Hertz, baud: super::Baud) -> Result<(u16, super::Baud), clock::Error> {
+fn baud_divisor(input: Hertz, baud: super::Baud) -> Result<u16, clock::Error> {
     let rate = u64::from(input.0);
     let denominator = u64::from(baud.0) * 16;
     if rate == 0 || denominator == 0 {
@@ -203,8 +184,7 @@ fn baud_divisor(input: Hertz, baud: super::Baud) -> Result<(u16, super::Baud), c
     {
         return Err(clock::Error::ImpossibleBaudrate);
     }
-    let actual = (rate + 8 * divisor) / (16 * divisor);
-    Ok((divisor as u16, super::Baud(actual as u32)))
+    Ok(divisor as u16)
 }
 
 impl embedded_io::ErrorType for BlockingUart<'_> {
@@ -244,6 +224,14 @@ mod tests {
     use core::cell::UnsafeCell;
     use embedded_io::{Read, Write};
 
+    #[test]
+    fn driver_keeps_only_the_register_and_receive_faults() {
+        assert_eq!(
+            core::mem::size_of::<BlockingUart<'_>>(),
+            core::mem::size_of::<(&RegisterBlock, Error)>()
+        );
+    }
+
     #[repr(transparent)]
     struct FakeUart([UnsafeCell<u32>; 8]);
 
@@ -279,14 +267,8 @@ mod tests {
     #[test]
     fn baud_rates_are_checked_before_programming() {
         use super::super::Baud;
-        assert_eq!(
-            baud_divisor(Hertz(14_745_600), Baud(115_200)),
-            Ok((8, Baud(115_200)))
-        );
-        assert_eq!(
-            baud_divisor(Hertz(57_600_000), Baud(115_200)),
-            Ok((31, Baud(116_129)))
-        );
+        assert_eq!(baud_divisor(Hertz(14_745_600), Baud(115_200)), Ok(8));
+        assert_eq!(baud_divisor(Hertz(57_600_000), Baud(115_200)), Ok(31));
         for (input, baud) in [
             (0, 115_200),
             (24_000_000, 0),

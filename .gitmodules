@@ -1,0 +1,3 @@
+[submodule "vendor/spacemit-firmware"]
+	path = vendor/spacemit-firmware
+	url = https://github.com/spacemit-com/spacemit-firmware.git

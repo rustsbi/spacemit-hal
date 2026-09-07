@@ -9,10 +9,10 @@ pub use commons::ModuleControl;
 // https://github.com/spacemit-com/uboot-2022.10/blob/1fa1ca64e9705a3650bcc7c21f6666949290830f/drivers/spi/k1x_qspi.c
 // K3 declares the same register interface via its spacemit,k1-qspi fallback.
 // https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k3.dtsi
-// This exposes the IP-read subset, not the controller's entire MMIO window.
+// This exposes the IP-transfer subset, not the controller's entire MMIO window.
 // IPCR, SPTRCLR, LUTKEY and LCKCR are write/command-only here to prohibit RMW.
 
-/// K1/M1 and K3 QSPI registers used for IP reads.
+/// K1/M1 and K3 QSPI registers used for IP transfers.
 #[repr(C)]
 pub struct RegisterBlock {
     /// Module configuration and FIFO-clear commands (MCR).
@@ -20,7 +20,9 @@ pub struct RegisterBlock {
     _reserved_0x004: [u32; 1],
     /// IP sequence launch command (IPCR).
     pub ip_command: WO<u32>,
-    _reserved_0x00c: [u32; 6],
+    /// Serial-flash timing control (FLSHCR).
+    pub flash_control: RW<u32>,
+    _reserved_0x010: [u32; 5],
     /// SoC-specific control (SOCCR).
     pub soc_control: RW<u32>,
     _reserved_0x028: [u32; 54],
@@ -33,7 +35,13 @@ pub struct RegisterBlock {
     _reserved_0x10c: [u32; 1],
     /// Receive-buffer control (RBCT).
     pub receive_buffer_control: RW<u32>,
-    _reserved_0x114: [u32; 18],
+    _reserved_0x114: [u32; 15],
+    /// Transmit-buffer status (TBSR).
+    pub transmit_buffer_status: RO<u32>,
+    /// Transmit FIFO push port (TBDR).
+    pub transmit_buffer_data: WO<u32>,
+    /// Transmit-buffer control (TBCT).
+    pub transmit_buffer_control: RW<u32>,
     /// Controller activity status (SR).
     pub status: RO<u32>,
     /// Status flags with write-one-to-clear acknowledgements (FR).
@@ -68,11 +76,15 @@ mod tests {
     fn register_block_layout() {
         assert_eq!(offset_of!(RegisterBlock, module_control), 0x000);
         assert_eq!(offset_of!(RegisterBlock, ip_command), 0x008);
+        assert_eq!(offset_of!(RegisterBlock, flash_control), 0x00c);
         assert_eq!(offset_of!(RegisterBlock, soc_control), 0x024);
         assert_eq!(offset_of!(RegisterBlock, flash_address), 0x100);
         assert_eq!(offset_of!(RegisterBlock, flash_address_control), 0x104);
         assert_eq!(offset_of!(RegisterBlock, sampling), 0x108);
         assert_eq!(offset_of!(RegisterBlock, receive_buffer_control), 0x110);
+        assert_eq!(offset_of!(RegisterBlock, transmit_buffer_status), 0x150);
+        assert_eq!(offset_of!(RegisterBlock, transmit_buffer_data), 0x154);
+        assert_eq!(offset_of!(RegisterBlock, transmit_buffer_control), 0x158);
         assert_eq!(offset_of!(RegisterBlock, status), 0x15c);
         assert_eq!(offset_of!(RegisterBlock, flags), 0x160);
         assert_eq!(offset_of!(RegisterBlock, interrupt_dma_enable), 0x164);

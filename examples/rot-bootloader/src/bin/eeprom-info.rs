@@ -1,48 +1,29 @@
 #![no_std]
 #![no_main]
 
-use rot_bootloader::{Board, eeprom, entry, println};
+use rot_bootloader::{Board, eeprom, entry, eprintln, io::Hex, println};
+
+static EEPROM_BYTES: spin::Mutex<[u8; 256]> = spin::Mutex::new([0; 256]);
 
 #[entry]
 fn main(mut b: Board) {
     println!("SpacemiT EEPROM diagnostics.");
-    let mut bytes = [0; 256];
-    if let Err(error) = b.eeprom.read_data(0, &mut bytes) {
-        println!("EEPROM read failed: {error:?}");
+    let mut bytes = EEPROM_BYTES.lock();
+    if let Err(error) = b.eeprom.read_data(0, &mut *bytes) {
+        eprintln!("EEPROM read failed: {:?}", error);
         return;
     }
     println!("EEPROM raw:");
     for (index, chunk) in bytes.chunks(16).enumerate() {
         let offset = index * 16;
-        println!("{offset:02x}: {chunk:02x?}");
+        println!("{:02x}: {}", offset, Hex(Some(chunk)));
     }
-    match &eeprom::parse(&bytes) {
-        Ok(info) => {
-            // Print fields separately to limit boot-stack usage.
+    let mut info = eeprom::EepromInfo::default();
+    match eeprom::parse_into(&*bytes, &mut info) {
+        Ok(()) => {
             println!("EEPROM parsed:");
-            println!("product_name: {:?}", info.product_name);
-            println!("part_number: {:?}", info.part_number);
-            println!("serial_number: {:?}", info.serial_number);
-            println!("base_mac: {:02x?}", info.base_mac);
-            println!("manufacture_date: {:?}", info.manufacture_date);
-            println!("device_version: {:?}", info.device_version);
-            println!("label_revision: {:?}", info.label_revision);
-            println!("platform_name: {:?}", info.platform_name);
-            println!("onie_version: {:?}", info.onie_version);
-            println!("mac_count: {:?}", info.mac_count);
-            println!("manufacturer: {:?}", info.manufacturer);
-            println!("country_code: {:?}", info.country_code);
-            println!("vendor: {:?}", info.vendor);
-            println!("diagnostic_version: {:?}", info.diagnostic_version);
-            println!("service_tag: {:?}", info.service_tag);
-            println!("sdk_version: {:?}", info.sdk_version);
-            println!("ddr: {:?}", info.ddr);
-            println!("wifi_mac: {:02x?}", info.wifi_mac);
-            println!("bluetooth_address: {:02x?}", info.bluetooth_address);
-            println!("pmic_type: {:?}", info.pmic_type);
-            println!("eeprom_i2c_index: {:?}", info.eeprom_i2c_index);
-            println!("eeprom_pin_group: {:?}", info.eeprom_pin_group);
+            rot_bootloader::io::print_eeprom(&info);
         }
-        Err(error) => println!("EEPROM parse failed: {error:?}"),
+        Err(error) => eprintln!("EEPROM parse failed: {:?}", error),
     }
 }

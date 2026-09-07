@@ -3,7 +3,8 @@ use object::read::elf::{ElfFile64, ProgramHeader};
 use object::{Object, ObjectSection, SectionFlags, SectionKind};
 
 pub const BASE: u64 = 0xc080_1000;
-pub const LIMIT: usize = 0x20000;
+// Vendor k1_defconfig CONFIG_SPL_SIZE_LIMIT, including appended DDR firmware/DTB.
+pub const LIMIT: usize = 0x34f00;
 
 // Like allwinner-hal/rfel: copy allocated, file-backed sections and preserve address gaps.
 pub fn convert(bytes: &[u8]) -> Result<Vec<u8>> {
@@ -104,6 +105,19 @@ mod tests {
     }
 
     #[test]
+    fn preserves_fixed_ddr_address_and_accepts_exact_limit() {
+        for offset in [0x2c000, LIMIT - 4] {
+            let mut elf = fixture();
+            elf[0x190..0x198].copy_from_slice(&(BASE + offset as u64).to_le_bytes());
+            let raw = convert(&elf).unwrap();
+            assert_eq!(raw.len(), offset + 4);
+            assert_eq!(&raw[..4], b"abcd");
+            assert!(raw[4..offset].iter().all(|&byte| byte == 0));
+            assert_eq!(&raw[offset..], b"efgh");
+        }
+    }
+
+    #[test]
     fn rejects_bad_entry_overlap_and_size() {
         let mut elf = fixture();
         elf[24] ^= 1;
@@ -118,5 +132,33 @@ mod tests {
     #[test]
     fn rejects_non_elf() {
         assert!(super::convert(b"not an ELF").is_err());
+    }
+
+    #[test]
+    #[ignore = "set SPACEMIT_LAYOUT_ELF to a linked DDR-enabled rot-bootloader ELF"]
+    fn linked_ddr_image_has_one_firmware_at_its_execution_address() {
+        let path = std::env::var_os("SPACEMIT_LAYOUT_ELF").unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let elf = object::File::parse(bytes.as_slice()).unwrap();
+        let info = elf.section_by_name(".ddr_info").unwrap();
+        assert_eq!((info.address(), info.size()), (0xc0800000, 1536));
+        assert_eq!(info.kind(), SectionKind::UninitializedData);
+        let raw = convert(&bytes).unwrap();
+        let blob = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../vendor/spacemit-firmware/k1/v0.2/ddr_fw.bin"),
+        )
+        .unwrap();
+        let offset = (0xc082_d000 - BASE) as usize;
+        assert_eq!(&raw[offset..], blob);
+        assert_eq!(
+            raw.windows(blob.len())
+                .filter(|window| *window == blob)
+                .count(),
+            1
+        );
+        let image = crate::fsbl::wrap(&raw).unwrap();
+        assert_eq!(&image[0x1000 + offset..0x1000 + raw.len()], blob);
+        assert!(image.len() <= 0x36000);
     }
 }

@@ -21,6 +21,19 @@ impl<'a> Pads<'a> {
         }
     }
 
+    /// Retains already configured I²C pads without constructing GPIO views.
+    ///
+    /// # Safety
+    /// Transfer both configured pads exclusively for 'a, with valid mappings,
+    /// power and electrical settings, and no conflicting users or recreated owners.
+    #[doc(hidden)]
+    #[inline]
+    pub unsafe fn __configured() -> Self {
+        Self {
+            _borrow: PhantomData,
+        }
+    }
+
     /// Retains exclusive access to dedicated I²C pads.
     ///
     /// # Safety

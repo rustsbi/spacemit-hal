@@ -43,6 +43,25 @@ macro_rules! soc {
     };
 }
 
+macro_rules! impl_qspi {
+    ($peripheral:ident) => {
+        // SAFETY: Peripheral acquisition transfers this exclusive, fixed register mapping.
+        unsafe impl<'a> spacemit_hal::qspi::Instance<'a> for $peripheral {
+            fn register_block(self) -> &'a spacemit_hal::qspi::RegisterBlock {
+                // SAFETY: Consuming the token transfers its permanently valid mapping.
+                unsafe { &*Self::ptr() }
+            }
+        }
+
+        // SAFETY: The borrow retains the controller's exclusive mapping for its lifetime.
+        unsafe impl<'a> spacemit_hal::qspi::Instance<'a> for &'a mut $peripheral {
+            fn register_block(self) -> &'a spacemit_hal::qspi::RegisterBlock {
+                self
+            }
+        }
+    };
+}
+
 macro_rules! impl_clock_controller {
     ($module:ident, $peripheral:ident, $register:ty) => {
         // SAFETY: Peripherals acquisition establishes exclusive, permanently
@@ -241,12 +260,11 @@ macro_rules! impl_i2c_pads {
         // SAFETY: The SoC mux table maps this pair to the stated I²C controller.
         unsafe impl<'a> spacemit_hal::i2c::IntoPads<'a, $i2c> for (Pad<$scl>, Pad<$sda>) {
             #[inline]
-            fn into_i2c_pads(self) -> spacemit_hal::i2c::Pads<'a> {
-                use spacemit_hal::i2c::IntoI2c;
-                spacemit_hal::i2c::Pads::from_gpio(
-                    self.0.into_i2c(),
-                    self.1.into_i2c(),
-                )
+            fn into_i2c_pads(mut self) -> spacemit_hal::i2c::Pads<'a> {
+                self.0.configure_i2c();
+                self.1.configure_i2c();
+                // SAFETY: Consuming both unique tokens retains their configured route for 'a.
+                unsafe { spacemit_hal::i2c::Pads::__configured() }
             }
         }
         // SAFETY: The same route retains both mutable pad borrows.
@@ -255,11 +273,10 @@ macro_rules! impl_i2c_pads {
         {
             #[inline]
             fn into_i2c_pads(self) -> spacemit_hal::i2c::Pads<'a> {
-                use spacemit_hal::i2c::IntoI2c;
-                spacemit_hal::i2c::Pads::from_gpio(
-                    self.0.into_i2c(),
-                    self.1.into_i2c(),
-                )
+                self.0.configure_i2c();
+                self.1.configure_i2c();
+                // SAFETY: The returned proof retains both exclusive pad borrows for 'a.
+                unsafe { spacemit_hal::i2c::Pads::__configured() }
             }
         }
     };

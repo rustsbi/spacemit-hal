@@ -1,6 +1,6 @@
 use super::{Clocks, Error, Hertz};
 use crate::apbc::UartClockReset;
-use core::marker::PhantomData;
+use core::{marker::PhantomData, num::NonZeroU32};
 use volatile_register::RW;
 
 /// A supported SoC-specific APBC UART identity.
@@ -36,7 +36,7 @@ impl<I: UartId> UartClock<I> {
     }
 
     /// Binds a verified UART frequency while retaining the controller borrows.
-    #[inline(always)]
+    #[inline]
     pub fn with_clock<'b>(
         &'b mut self,
         clocks: &Clocks<'b>,
@@ -47,7 +47,9 @@ impl<I: UartId> UartClock<I> {
             return Err(Error::Disabled);
         }
         let source = value.clock_source().ok_or(Error::ReservedSource)?;
-        let frequency = clocks.uart_source(source).ok_or(Error::UnknownFrequency)?;
+        let frequency = clocks
+            .uart_frequency(source)
+            .ok_or(Error::UnknownFrequency)?;
         Ok(UartFrequency {
             inner: UartFrequencyRef {
                 _source: PhantomData,
@@ -69,12 +71,12 @@ impl<I: UartId> UartFrequency<'_, I> {
     /// Returns the verified UART input frequency.
     #[inline]
     pub const fn frequency(&self) -> Hertz {
-        self.inner.frequency
+        Hertz(self.inner.frequency.get())
     }
 }
 
 pub(crate) struct UartFrequencyRef<'a> {
     // Retain the controllers' lifetime, not the address of the Clocks snapshot.
     _source: PhantomData<(&'a mut (), Clocks<'a>)>,
-    pub(crate) frequency: Hertz,
+    pub(crate) frequency: NonZeroU32,
 }

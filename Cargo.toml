@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "qspi-nor",
     "spacemit-hal",
     "spacemit-p1",
     "spacemit-riscv",
@@ -11,6 +12,7 @@ members = [
     "xtask",
 ]
 default-members = [
+    "qspi-nor",
     "spacemit-hal",
     "spacemit-p1",
     "spacemit-riscv",
@@ -27,9 +29,11 @@ repository = "https://atomgit.com/rustsbi/spacemit-hal"
 cfg-if = "1.0.4"
 embedded-hal = "1.0.0"
 embedded-io = "0.7.1"
+embedded-storage = "0.3.1"
 embedded-time = "0.12.1"
 measurements = { version = "0.11.1", default-features = false }
 riscv = { version = "0.16.1", default-features = false }
+qspi-nor = { version = "0.0.0", path = "qspi-nor" }
 spacemit-hal = { version = "0.0.0", path = "spacemit-hal" }
 spacemit-p1 = { version = "0.0.0", path = "spacemit-p1" }
 spacemit-riscv = { version = "0.0.0", path = "spacemit-riscv" }

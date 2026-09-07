@@ -1,43 +1,48 @@
 #![no_std]
 #![no_main]
 
-use rot_bootloader::{Board, eeprom, entry, println};
+use rot_bootloader::{Board, eeprom, entry, eprintln, println};
+
+static EEPROM_BYTES: spin::Mutex<[u8; 256]> = spin::Mutex::new([0; 256]);
 
 #[entry]
 fn main(mut b: Board) {
     println!("Hello world!");
-    let mut bytes = [0; 256];
-    if let Err(error) = b.eeprom.read_data(0, &mut bytes) {
-        println!("EEPROM read failed: {error:?}");
+    let mut bytes = EEPROM_BYTES.lock();
+    if let Err(error) = b.eeprom.read_data(0, &mut *bytes) {
+        eprintln!("EEPROM read failed: {:?}", error);
         return;
     }
-    match &eeprom::parse(&bytes) {
-        Ok(info) => {
-            // Print fields separately to limit boot-stack usage.
-            println!("EEPROM:");
-            println!("product_name: {:?}", info.product_name);
-            println!("part_number: {:?}", info.part_number);
-            println!("serial_number: {:?}", info.serial_number);
-            println!("base_mac: {:02x?}", info.base_mac);
-            println!("manufacture_date: {:?}", info.manufacture_date);
-            println!("device_version: {:?}", info.device_version);
-            println!("label_revision: {:?}", info.label_revision);
-            println!("platform_name: {:?}", info.platform_name);
-            println!("onie_version: {:?}", info.onie_version);
-            println!("mac_count: {:?}", info.mac_count);
-            println!("manufacturer: {:?}", info.manufacturer);
-            println!("country_code: {:?}", info.country_code);
-            println!("vendor: {:?}", info.vendor);
-            println!("diagnostic_version: {:?}", info.diagnostic_version);
-            println!("service_tag: {:?}", info.service_tag);
-            println!("sdk_version: {:?}", info.sdk_version);
-            println!("ddr: {:?}", info.ddr);
-            println!("wifi_mac: {:02x?}", info.wifi_mac);
-            println!("bluetooth_address: {:02x?}", info.bluetooth_address);
-            println!("pmic_type: {:?}", info.pmic_type);
-            println!("eeprom_i2c_index: {:?}", info.eeprom_i2c_index);
-            println!("eeprom_pin_group: {:?}", info.eeprom_pin_group);
+    let mut info = eeprom::EepromInfo::default();
+    if let Err(error) = eeprom::parse_into(&*bytes, &mut info) {
+        eprintln!("EEPROM parse failed: {:?}", error);
+        return;
+    }
+
+    println!("EEPROM:");
+    rot_bootloader::io::print_eeprom(&info);
+
+    println!("DDR: LPDDR4X, 2 CS, 2400 MT/s; training...");
+    // SAFETY: Cold MUSE Card M1 boot; no payload, DMA or secondary hart uses DRAM.
+    let firmware_status = match unsafe { b.init_ddr(info.ddr.as_ref()) } {
+        Ok(status) => status,
+        Err(error) => {
+            eprintln!("DDR initialization failed: {:?}", error);
+            return;
         }
-        Err(error) => println!("EEPROM parse failed: {error:?}"),
+    };
+    println!("DDR firmware returned: {}", firmware_status);
+    println!("NOR: loading SBI firmware, next stage and DTB...");
+    // SAFETY: Training succeeded; DRAM is unused and all other harts and DMA remain stopped.
+    match unsafe { b.load_images() } {
+        Ok(images) => {
+            println!(
+                "Loaded: SBI {} bytes, next stage {} bytes, DTB {} bytes",
+                images.sbi.size, images.payload.size, images.dtb.size
+            );
+            // SAFETY: Verified images, sole boot hart, completed PIO and no further Rust execution.
+            unsafe { rot_bootloader::handoff::enter(images) };
+        }
+        Err(error) => eprintln!("NOR image loading failed: {:?}", error),
     }
 }

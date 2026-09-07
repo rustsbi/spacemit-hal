@@ -1,10 +1,15 @@
 mod elf2bin;
 mod fastboot;
 mod fsbl;
+mod nor;
+
+#[allow(dead_code)]
+#[path = "../../examples/rot-bootloader/src/image/mod.rs"]
+mod image;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::{fs, path::PathBuf};
+use std::{eprintln, fs, path::PathBuf, println};
 
 #[derive(Parser)]
 #[command(about = "Build and run K1/M1 development FSBL images")]
@@ -15,6 +20,19 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Build a complete NOR image while preserving board-specific backup data.
+    PackNor {
+        #[arg(long)]
+        backup: PathBuf,
+        #[arg(long)]
+        fsbl: PathBuf,
+        #[arg(long)]
+        sbi: Option<PathBuf>,
+        #[arg(long)]
+        payload: Option<PathBuf>,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
     /// Wrap a raw FSBL binary in a K1/M1 container.
     WrapFsbl {
         input: PathBuf,
@@ -44,6 +62,13 @@ fn write_image(raw: &[u8], output: &std::path::Path) -> Result<()> {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::PackNor {
+            backup,
+            fsbl,
+            sbi,
+            payload,
+            output,
+        } => nor::pack(&backup, &fsbl, sbi.as_deref(), payload.as_deref(), &output),
         Command::WrapFsbl { input, output } => {
             let raw = fs::read(&input).with_context(|| format!("read {}", input.display()))?;
             let output = output.unwrap_or_else(|| output_path(&input));

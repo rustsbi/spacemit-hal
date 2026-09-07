@@ -70,6 +70,7 @@ soc! {
 
 impl_clock_controller!(apbs, APBS, apbs::k1::RegisterBlock);
 impl_clock_controller!(mpmu, MPMU, mpmu::k1::RegisterBlock);
+impl_qspi!(QSPI);
 
 impl_uart!(
     UART0, UART1, UART2, UART3, UART4, UART5, UART6, UART7, UART8, UART9, R_UART0, R_UART1
@@ -488,6 +489,12 @@ mod tests {
         register_type::<MFPR, mfpr::k1::RegisterBlock>();
         assert_eq!(MFPR::ptr() as usize, 0xd401_e000);
         register_type::<QSPI, qspi::RegisterBlock>();
+        fn qspi_type<T: qspi::Instance<'static>>()
+        where
+            for<'a> &'a mut T: qspi::Instance<'a>,
+        {
+        }
+        qspi_type::<QSPI>();
         assert_eq!(QSPI::ptr() as usize, 0xd420_c000);
         register_type::<COUNTER, counter::k1::RegisterBlock>();
         fn counter_type<T: counter::Instance<'static>>()

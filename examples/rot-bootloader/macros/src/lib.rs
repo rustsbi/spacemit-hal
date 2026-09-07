@@ -59,6 +59,7 @@ fn expand(input: ItemFn, bootloader: Tokens, runtime: Tokens) -> syn::Result<Tok
     let peripherals = syn::Ident::new("peripherals", proc_macro2::Span::mixed_site());
     let board = syn::Ident::new("board", proc_macro2::Span::mixed_site());
     let run = syn::Ident::new("__rot_bootloader_main", proc_macro2::Span::mixed_site());
+    let store = syn::Ident::new("__rot_bootloader_store", proc_macro2::Span::mixed_site());
     let mut wrapper = input.clone();
     wrapper.sig.inputs = syn::parse_quote!(#peripherals: #runtime::Peripherals);
     wrapper.sig.output = ReturnType::Default;
@@ -76,7 +77,8 @@ fn expand(input: ItemFn, bootloader: Tokens, runtime: Tokens) -> syn::Result<Tok
             }
         }
 
-        let stored = {
+        #[inline]
+        fn #store(#peripherals: #runtime::Peripherals) -> &'static mut #runtime::Peripherals {
             static mut PERIPHERALS: ::core::mem::MaybeUninit<#runtime::Peripherals> =
                 ::core::mem::MaybeUninit::uninit();
             // SAFETY: The runtime invokes this wrapper once on the boot hart.
@@ -87,7 +89,8 @@ fn expand(input: ItemFn, bootloader: Tokens, runtime: Tokens) -> syn::Result<Tok
                 slot.write(#peripherals);
                 &mut *slot
             }
-        };
+        }
+        let stored = #store(#peripherals);
         #run(stored);
     });
     Ok(quote! {
@@ -115,6 +118,8 @@ mod tests {
         assert!(text.contains("fn main (mut board : Board)"));
         assert!(text.contains(":: renamed :: platform :: init_board (peripherals)"));
         assert!(text.contains("main (board)"));
+        assert!(text.contains("fn __rot_bootloader_store"));
+        assert!(text.contains("__rot_bootloader_main (stored)"));
         assert!(!text.contains("steal"));
         assert!(!text.contains("runtime ="));
     }

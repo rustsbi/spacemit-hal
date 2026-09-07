@@ -477,6 +477,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qspi-nor"
+version = "0.0.0"
+dependencies = [
+ "embedded-storage",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -539,13 +546,17 @@ dependencies = [
  "eeprom24x",
  "embedded-hal",
  "embedded-io",
+ "embedded-storage",
  "measurements",
+ "qspi-nor",
  "riscv",
  "rot-bootloader-macros",
+ "sha2",
  "spacemit-hal",
  "spacemit-p1",
  "spacemit-rt",
  "spin",
+ "ufmt",
 ]
 
 [[package]]
@@ -633,6 +644,7 @@ dependencies = [
  "embedded-hal",
  "embedded-io",
  "embedded-time",
+ "qspi-nor",
  "riscv",
  "uart16550",
  "vcell",
@@ -706,6 +718,17 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
@@ -767,6 +790,33 @@ name = "uart16550"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "939f6f9ccad815fe3efca8fd06f2ec1620c0387fb1bca2b231b61ce710bffb9b"
+
+[[package]]
+name = "ufmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a64846ec02b57e9108d6469d98d1648782ad6bb150a95a9baac26900bbeab9d"
+dependencies = [
+ "ufmt-macros",
+ "ufmt-write",
+]
+
+[[package]]
+name = "ufmt-macros"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d337d3be617449165cb4633c8dece429afd83f84051024079f97ad32a9663716"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "ufmt-write"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e87a2ed6b42ec5e28cc3b94c09982969e9227600b2e3dcbc1db927a84c06bd69"
 
 [[package]]
 name = "unicode-ident"
@@ -837,9 +887,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "embedded-storage",
  "object",
+ "qspi-nor",
  "rsa",
  "sha2",
+ "spacemit-hal",
 ]
 
 [[package]]

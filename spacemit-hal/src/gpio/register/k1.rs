@@ -44,12 +44,15 @@ pub struct RegisterBlock {
 impl RegisterBlock {
     #[inline(always)]
     const fn interleaved_bank(&self, index: usize) -> BankRegisters<'_> {
-        BankRegisters {
-            pin_level: &self.pin_level[index],
-            pin_output_set: &self.pin_output_set[index],
-            pin_output_clear: &self.pin_output_clear[index],
-            direction_set: &self.direction_set[index],
-            direction_clear: &self.direction_clear[index],
+        // SAFETY: bank() selects 0..3; the whole block retains pointer provenance
+        // across the interleaved arrays, whose register kinds are 12 bytes apart.
+        unsafe {
+            BankRegisters::new(
+                core::ptr::NonNull::from_ref(self)
+                    .cast::<u8>()
+                    .add(index * 4),
+                12,
+            )
         }
     }
 
@@ -116,13 +119,8 @@ pub struct Bank {
 impl Bank {
     #[inline(always)]
     const fn registers(&self) -> BankRegisters<'_> {
-        BankRegisters {
-            pin_level: &self.pin_level,
-            pin_output_set: &self.pin_output_set,
-            pin_output_clear: &self.pin_output_clear,
-            direction_set: &self.direction_set,
-            direction_clear: &self.direction_clear,
-        }
+        // SAFETY: This complete, borrowed K1 bank has 12-byte register spacing.
+        unsafe { BankRegisters::new(core::ptr::NonNull::from_ref(self).cast(), 12) }
     }
 }
 
@@ -196,9 +194,21 @@ mod tests {
         let base = &gpio as *const _ as usize;
         for (i, offset) in [0, 4, 8, 0x100].into_iter().enumerate() {
             let bank = gpio.bank(i as u8).unwrap();
-            assert_eq!(bank.pin_level as *const _ as usize - base, offset);
+            assert_eq!(bank.pin_level() as *const _ as usize - base, offset);
             assert_eq!(
-                bank.direction_set as *const _ as usize - base,
+                bank.pin_output_set() as *const _ as usize - base,
+                offset + 24
+            );
+            assert_eq!(
+                bank.pin_output_clear() as *const _ as usize - base,
+                offset + 36
+            );
+            assert_eq!(
+                bank.direction_clear() as *const _ as usize - base,
+                offset + 96
+            );
+            assert_eq!(
+                bank.direction_set() as *const _ as usize - base,
                 offset + 0x54
             );
         }
@@ -212,10 +222,10 @@ mod tests {
             let bank = gpio.bank(n / 32).unwrap();
             let config = &mfpr.gpio[usize::from(n)];
             let aliases = [
-                bank.pin_output_set,
-                bank.pin_output_clear,
-                bank.direction_set,
-                bank.direction_clear,
+                bank.pin_output_set(),
+                bank.pin_output_clear(),
+                bank.direction_set(),
+                bank.direction_clear(),
             ];
             let mask = 1 << (n % 32);
             // SAFETY: Exclusive, initialized RAM fixtures; WO cells retain writes.
@@ -238,17 +248,17 @@ mod tests {
                 };
                 assert_eq!(config.read(), 0xffff_fff8 | function);
                 assert_eq!(
-                    (read(bank.pin_output_set), read(bank.direction_set)),
+                    (read(bank.pin_output_set()), read(bank.direction_set())),
                     (mask, mask)
                 );
                 assert!(output.is_set_high().unwrap());
                 output.set_low().unwrap();
-                assert_eq!(read(bank.pin_output_clear), mask);
+                assert_eq!(read(bank.pin_output_clear()), mask);
                 assert!(output.is_set_low().unwrap());
 
                 let mut input = output.into_input();
-                assert_eq!(read(bank.direction_clear), mask);
-                core::ptr::from_ref(bank.pin_level)
+                assert_eq!(read(bank.direction_clear()), mask);
+                core::ptr::from_ref(bank.pin_level())
                     .cast_mut()
                     .cast::<u32>()
                     .write_volatile(mask);

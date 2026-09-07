@@ -1,6 +1,6 @@
 //! Boot-hart console. Uninitialized, reentrant and other-hart writes are skipped.
 
-use core::fmt;
+use core::convert::Infallible;
 use embedded_io::Write;
 use spacemit_hal::uart::BlockingUart;
 use spin::{Mutex, Once};
@@ -69,9 +69,42 @@ pub(crate) fn lock() -> Option<Guard<'static, BlockingUart<'static>>> {
     CONSOLE.get()?.lock(current_hart()?)
 }
 
-/// Writes and flushes a formatted message through the board console.
+/// A locked, infallible formatting sink; unavailable consoles discard output.
 #[doc(hidden)]
-pub fn _print(args: fmt::Arguments<'_>) {
+pub struct Writer {
+    uart: Option<Guard<'static, BlockingUart<'static>>>,
+}
+
+impl ufmt::uWrite for Writer {
+    type Error = Infallible;
+
+    #[inline]
+    fn write_str(&mut self, text: &str) -> Result<(), Infallible> {
+        if let Some(uart) = &mut self.uart {
+            for &byte in text.as_bytes() {
+                uart.write_byte(byte);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Formats and flushes one message without dynamic dispatch.
+#[doc(hidden)]
+#[inline(never)]
+pub fn _print(format: impl FnOnce(&mut Writer) -> Result<(), Infallible>) {
+    let mut writer = Writer { uart: lock() };
+    let _ = format(&mut writer);
+    if let Some(uart) = &mut writer.uart {
+        uart.flush();
+    }
+}
+
+/// Formats cold-path diagnostics using the original `core::fmt` traits.
+#[doc(hidden)]
+#[cold]
+#[inline(never)]
+pub fn _eprint(args: core::fmt::Arguments<'_>) {
     if let Some(mut uart) = lock() {
         let _ = uart.write_fmt(args);
         uart.flush();

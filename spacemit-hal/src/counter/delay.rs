@@ -55,14 +55,18 @@ impl<'a> CounterDelay<'a> {
         unsafe { control.write(control.read().with_enabled(true)) };
         super::io_fence();
         let start = read(counter);
-        if !(0..100_000).any(|_| read(counter) != start) {
-            return Err(Error::NotAdvancing);
+        let mut remaining = 100_000;
+        while remaining != 0 {
+            remaining -= 1;
+            if read(counter) != start {
+                return Ok(Self {
+                    counter,
+                    frequency,
+                    _clocks: PhantomData,
+                });
+            }
         }
-        Ok(Self {
-            counter,
-            frequency,
-            _clocks: PhantomData,
-        })
+        Err(Error::NotAdvancing)
     }
     /// Returns the configured tick rate (not a measured frequency).
     #[inline]

@@ -1,5 +1,6 @@
 use super::{Instance, IntoPads, Pads, RegisterBlock};
 use crate::clock::{I2cFrequency, I2cFrequencyRef, io_fence};
+use core::marker::PhantomData;
 use embedded_hal::{
     delay::DelayNs,
     i2c::{self, NoAcknowledgeSource, Operation},
@@ -63,8 +64,8 @@ impl i2c::Error for Error {
 /// A polling I²C controller retaining its pads, gate and shared-source borrows.
 pub struct BlockingI2c<'a> {
     registers: &'a RegisterBlock,
-    _clock: core::marker::PhantomData<I2cFrequencyRef<'a>>,
-    _pads: Pads<'a>,
+    _clock: PhantomData<I2cFrequencyRef<'a>>,
+    _pads: PhantomData<Pads<'a>>,
     budget: u32,
     failed: bool,
 }
@@ -83,11 +84,11 @@ impl<'a> BlockingI2c<'a> {
             return Err(Error::InvalidConfig);
         }
         clock.enable(delay);
-        let pads = pads.into_i2c_pads();
+        let _pads = pads.into_i2c_pads();
         let this = Self {
             registers: i2c.register_block(),
-            _clock: core::marker::PhantomData,
-            _pads: pads,
+            _clock: PhantomData,
+            _pads: PhantomData,
             budget: config.poll_budget,
             failed: false,
         };
@@ -114,7 +115,9 @@ impl<'a> BlockingI2c<'a> {
 
     #[inline]
     fn idle(&self) -> Result<(), Error> {
-        for _ in 0..self.budget {
+        let mut remaining = self.budget;
+        while remaining != 0 {
+            remaining -= 1;
             if self.registers.status.read() & BUSY == 0 {
                 return Ok(());
             }
@@ -123,7 +126,7 @@ impl<'a> BlockingI2c<'a> {
         Err(Error::PollLimit)
     }
 
-    #[inline]
+    #[inline(always)]
     fn byte(&mut self, value: Option<u8>, flags: u32) -> Result<u8, Error> {
         let done = if value.is_some() { 1 << 19 } else { 1 << 20 };
         // SAFETY: Previous byte completed; clear stale events and fill TX when needed.
@@ -135,7 +138,9 @@ impl<'a> BlockingI2c<'a> {
         }
         io_fence();
         self.command(BASE | flags | TRANSFER);
-        for _ in 0..self.budget {
+        let mut remaining = self.budget;
+        while remaining != 0 {
+            remaining -= 1;
             let status = self.registers.status.read();
             if let Some(error) = status_error(status, value.is_some(), flags & START != 0) {
                 return Err(error);
@@ -178,7 +183,7 @@ impl i2c::ErrorType for BlockingI2c<'_> {
 }
 
 impl i2c::I2c for BlockingI2c<'_> {
-    #[inline]
+    #[inline(always)]
     fn transaction(&mut self, address: u8, operations: &mut [Operation<'_>]) -> Result<(), Error> {
         if address > 0x7f {
             return Err(Error::InvalidConfig);
@@ -215,6 +220,16 @@ fn empty(operation: &Operation<'_>) -> bool {
 }
 
 #[inline]
+fn next_direction(operations: &[Operation<'_>]) -> Option<bool> {
+    for operation in operations {
+        if !empty(operation) {
+            return Some(matches!(operation, Operation::Read(_)));
+        }
+    }
+    None
+}
+
+#[inline(always)]
 fn transfer(
     address: u8,
     operations: &mut [Operation<'_>],
@@ -226,33 +241,33 @@ fn transfer(
             continue;
         }
         let read = matches!(operations[index], Operation::Read(_));
-        let next = operations[index + 1..]
-            .iter()
-            .find(|op| !empty(op))
-            .map(|op| matches!(op, Operation::Read(_)));
+        let next = next_direction(&operations[index + 1..]);
         if previous != Some(read) {
             byte(Some((address << 1) | u8::from(read)), START)?;
         }
         match &mut operations[index] {
             Operation::Write(bytes) => {
-                for (i, &value) in bytes.iter().enumerate() {
+                let mut i = 0;
+                while i < bytes.len() {
                     byte(
-                        Some(value),
+                        Some(bytes[i]),
                         if i + 1 == bytes.len() && next.is_none() {
                             STOP
                         } else {
                             0
                         },
                     )?;
+                    i += 1;
                 }
             }
             Operation::Read(bytes) => {
-                let len = bytes.len();
-                for (i, value) in bytes.iter_mut().enumerate() {
-                    let last = i + 1 == len;
-                    let flags = if last && next != Some(true) { NACK } else { 0 }
-                        | if last && next.is_none() { STOP } else { 0 };
-                    *value = byte(None, flags)?;
+                let last_flags = if next != Some(true) { NACK } else { 0 }
+                    | if next.is_none() { STOP } else { 0 };
+                let mut i = 0;
+                while i < bytes.len() {
+                    let flags = if i + 1 == bytes.len() { last_flags } else { 0 };
+                    bytes[i] = byte(None, flags)?;
+                    i += 1;
                 }
             }
         }
@@ -285,10 +300,12 @@ mod tests {
             self.0
         }
     }
-    struct TestPads;
+    struct TestPads<'a>(&'a core::cell::Cell<u32>, &'a RegisterBlock);
     // SAFETY: Test-only dedicated pads have no physical side effects or other owners.
-    unsafe impl<'a> IntoPads<'a, TestId> for TestPads {
+    unsafe impl<'a> IntoPads<'a, TestId> for TestPads<'a> {
         fn into_i2c_pads(self) -> Pads<'a> {
+            assert_eq!(self.1.control.read(), 0);
+            self.0.set(self.0.get() + 1);
             // SAFETY: Exclusive simulated dedicated pads.
             unsafe { Pads::__dedicated() }
         }
@@ -307,14 +324,16 @@ mod tests {
         // SAFETY: Exclusive test clock with no hardware dependencies.
         let mut clock = unsafe { I2cClock::<TestId>::__new() };
         let clocks = Clocks::for_test(true);
+        let pad_configurations = core::cell::Cell::new(0);
         let result = BlockingI2c::new(
             Token(&registers),
-            TestPads,
+            TestPads(&pad_configurations, &registers),
             clock.with_clock(&clocks).unwrap(),
             Config { poll_budget: 0 },
             &mut Delay,
         );
         assert!(matches!(result, Err(Error::InvalidConfig)));
+        assert_eq!(pad_configurations.get(), 0);
         assert_eq!(registers.control.read(), 0);
         // SAFETY: Inspect the initialized RAM fixture, not write-only hardware.
         assert_eq!(
@@ -324,12 +343,13 @@ mod tests {
         drop(result);
         let driver = BlockingI2c::new(
             Token(&registers),
-            TestPads,
+            TestPads(&pad_configurations, &registers),
             clock.with_clock(&clocks).unwrap(),
             Config::default(),
             &mut Delay,
         )
         .unwrap();
+        assert_eq!(pad_configurations.get(), 1);
         assert_eq!(driver.registers.control.read(), BASE);
         assert_eq!(driver.registers.slave_address.read(), 0);
         // SAFETY: Only a RAM fixture, where the WO cell records its last write.
@@ -388,6 +408,57 @@ mod tests {
         .unwrap();
         assert_eq!(trace, [(Some(0x83), START), (None, NACK | STOP)]);
         transfer(0, &mut [], |_, _| panic!()).unwrap();
+    }
+
+    #[test]
+    fn all_short_direction_sequences_preserve_bus_events() {
+        for sequence in 0..1024_u16 {
+            let kinds: [u8; 5] = core::array::from_fn(|i| ((sequence >> (2 * i)) & 3) as u8);
+            let active: Vec<_> = kinds.iter().copied().filter(|&kind| kind >= 2).collect();
+            let mut expected = Vec::new();
+            for (i, &kind) in active.iter().enumerate() {
+                if i == 0 || active[i - 1] != kind {
+                    expected.push((Some(0xa0 | (kind & 1)), START));
+                }
+                let next = active.get(i + 1).copied();
+                if kind == 2 {
+                    expected.push((Some(0x3a), 0));
+                    expected.push((Some(0x7f), if next.is_none() { STOP } else { 0 }));
+                } else {
+                    expected.push((None, 0));
+                    expected.push((
+                        None,
+                        match next {
+                            Some(3) => 0,
+                            Some(_) => NACK,
+                            None => NACK | STOP,
+                        },
+                    ));
+                }
+            }
+            let mut buffers = [[0; 2]; 5];
+            let mut operations: Vec<_> = buffers
+                .iter_mut()
+                .zip(kinds)
+                .map(|(buffer, kind)| match kind {
+                    0 => Operation::Write(&[]),
+                    1 => Operation::Read(&mut buffer[..0]),
+                    2 => Operation::Write(&[0x3a, 0x7f]),
+                    _ => Operation::Read(buffer),
+                })
+                .collect();
+            let mut actual = Vec::new();
+            transfer(0x50, &mut operations, |value, flags| {
+                actual.push((value, flags));
+                Ok(42)
+            })
+            .unwrap();
+            assert_eq!(actual, expected, "sequence {sequence}");
+            drop(operations);
+            for (buffer, kind) in buffers.iter().zip(kinds) {
+                assert_eq!(*buffer, if kind == 3 { [42; 2] } else { [0; 2] });
+            }
+        }
     }
 
     #[test]
