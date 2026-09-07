@@ -14,6 +14,7 @@ impl ModuleControl {
     const COMMANDS: u32 = Self::CLEAR_RX_FIFO | Self::CLEAR_TX_FIFO;
 
     /// Reads module configuration without replayable FIFO-clear commands.
+    #[inline]
     pub fn read_configuration(&self) -> u32 {
         self.register.get() & !Self::COMMANDS
     }
@@ -24,6 +25,7 @@ impl ModuleControl {
     /// The caller must exclusively own the controller and ensure the value,
     /// clocks, reset sequencing, and absence of active IP/AHB/DMA users permit
     /// this configuration change.
+    #[inline]
     pub unsafe fn write_configuration(&self, value: u32) {
         assert_eq!(
             value & Self::COMMANDS,
@@ -38,6 +40,7 @@ impl ModuleControl {
     /// # Safety
     /// The caller must exclusively own an idle, accessible controller with no
     /// IP/AHB/DMA users and no pending FIFO data that must be preserved.
+    #[inline]
     pub unsafe fn clear_fifos(&self) {
         self.register
             .set(self.read_configuration() | Self::COMMANDS);

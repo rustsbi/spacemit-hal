@@ -9,6 +9,7 @@ pub mod v100;
 static PERIPHERALS_TAKEN: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 
+#[inline]
 fn claim_peripherals(taken: &core::sync::atomic::AtomicBool) -> bool {
     use core::sync::atomic::Ordering;
     taken

@@ -1,6 +1,6 @@
 //! K1/M1 peripheral ownership and addresses.
 
-use spacemit_hal::{apbc, apbs, apmu, counter, gpio, i2c, mfpr, mpmu, qspi, uart};
+use spacemit_hal::{apbc, apbs, apmu, ciu, counter, gpio, i2c, mfpr, mpmu, qspi, uart};
 
 // Address map: Linux k1.dtsi and the vendor k1-x.dtsi (UART1 and R_UART0/1).
 // https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k1.dtsi
@@ -38,6 +38,8 @@ soc! {
     pub struct APBC => 0xd401_5000, apbc::k1::RegisterBlock;
     /// Application-processor power, clock, and reset peripheral.
     pub struct APMU => 0xd428_2800, apmu::k1::RegisterBlock;
+    /// CPU configuration peripheral.
+    pub struct CIU => 0xd428_2c00, ciu::k1::RegisterBlock;
     /// GPIO peripheral.
     pub struct GPIO => 0xd401_9000, gpio::k1::RegisterBlock;
     /// UART0 peripheral.
@@ -66,11 +68,73 @@ soc! {
     pub struct R_UART1 => 0xc088_d000, uart::RegisterBlock;
 }
 
+impl_clock_controller!(apbs, APBS, apbs::k1::RegisterBlock);
+impl_clock_controller!(mpmu, MPMU, mpmu::k1::RegisterBlock);
+
 impl_uart!(
     UART0, UART1, UART2, UART3, UART4, UART5, UART6, UART7, UART8, UART9, R_UART0, R_UART1
 );
 
+// SAFETY: Peripherals::take/steal grants permanent exclusive K1/M1 counter
+// access, including permission to enable it without conflicting writers.
+unsafe impl<'a> counter::Instance<'a> for COUNTER {
+    #[inline]
+    fn register_block(self) -> &'a counter::k1::RegisterBlock {
+        // SAFETY: Consuming the token transfers its permanently valid mapping.
+        unsafe { &*Self::ptr() }
+    }
+}
+
+// SAFETY: The mutable borrow retains the token's guarantees for its lifetime.
+unsafe impl<'a> counter::Instance<'a> for &'a mut COUNTER {
+    #[inline]
+    fn register_block(self) -> &'a counter::k1::RegisterBlock {
+        self
+    }
+}
+
 gpio_pads!(__new_k1);
+
+// pinctrl_i2c2_0: function 4, pull-up, 1.8 V drive strength 0, edge detection disabled.
+impl_i2c_pads!(I2C2, 84, 85, 0xc044);
+
+/// Exclusive dedicated PWR_SCL/PWR_SDA pads, retaining their boot configuration.
+pub struct PmicPads {
+    _private: core::marker::PhantomData<*mut ()>,
+}
+
+// SAFETY: Peripherals::steal transfers the configured, dedicated I²C8 pads once.
+unsafe impl<'a> i2c::IntoPads<'a, I2C8> for PmicPads {
+    #[inline]
+    fn into_i2c_pads(self) -> i2c::Pads<'a> {
+        // SAFETY: Consuming this token transfers permanent dedicated-pad ownership.
+        unsafe { i2c::Pads::__dedicated() }
+    }
+}
+
+// SAFETY: The borrow excludes the owner and retains the same dedicated route.
+unsafe impl<'a> i2c::IntoPads<'a, I2C8> for &'a mut PmicPads {
+    #[inline]
+    fn into_i2c_pads(self) -> i2c::Pads<'a> {
+        // SAFETY: Dedicated-pad access is transferred only for this borrow.
+        unsafe { i2c::Pads::__dedicated() }
+    }
+}
+
+#[cfg(test)]
+mod i2c_pad_tests {
+    use super::*;
+
+    #[test]
+    fn owned_and_borrowed_routes() {
+        fn route<'a, I: spacemit_hal::clock::I2cId, P: i2c::IntoPads<'a, I>>() {}
+        route::<I2C2, (Pad<84>, Pad<85>)>();
+        route::<I2C2, (&mut Pad<84>, &mut Pad<85>)>();
+        route::<I2C8, PmicPads>();
+        route::<I2C8, &mut PmicPads>();
+        assert_eq!(core::mem::size_of::<PmicPads>(), 0);
+    }
+}
 
 // UART GPIO routes: Linux k1-pinctrl.dtsi; TX and RX may use different functions.
 // https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k1-pinctrl.dtsi
@@ -145,19 +209,44 @@ apbc_clocks! {
         UART9 => uart9, uart9_clock_reset;
     }
     i2c {
-        I2C0 => i2c0, twsi0_clock_reset, from_register;
-        I2C1 => i2c1, twsi1_clock_reset, from_register;
-        I2C2 => i2c2, twsi2_clock_reset, from_register;
-        I2C4 => i2c4, twsi4_clock_reset, from_register;
-        I2C5 => i2c5, twsi5_clock_reset, from_register;
-        I2C6 => i2c6, twsi6_clock_reset, from_register;
-        I2C7 => i2c7, twsi7_clock_reset, from_register;
-        I2C8 => i2c8, twsi8_clock_reset, from_write_only_register;
+        I2C0 => i2c0, twsi0_clock_reset;
+        I2C1 => i2c1, twsi1_clock_reset;
+        I2C2 => i2c2, twsi2_clock_reset;
+        I2C4 => i2c4, twsi4_clock_reset;
+        I2C5 => i2c5, twsi5_clock_reset;
+        I2C6 => i2c6, twsi6_clock_reset;
+        I2C7 => i2c7, twsi7_clock_reset;
+        I2C8 => i2c8, twsi8_clock_reset;
     }
+    counter { COUNTER => counter, counter_clock_control; }
+}
+
+/// Exclusive application-hart tokens.
+pub struct Harts {
+    /// Hardware hart 0.
+    pub hart0: crate::hart::Hart<0>,
+    /// Hardware hart 1.
+    pub hart1: crate::hart::Hart<1>,
+    /// Hardware hart 2.
+    pub hart2: crate::hart::Hart<2>,
+    /// Hardware hart 3.
+    pub hart3: crate::hart::Hart<3>,
+    /// Hardware hart 4.
+    pub hart4: crate::hart::Hart<4>,
+    /// Hardware hart 5.
+    pub hart5: crate::hart::Hart<5>,
+    /// Hardware hart 6.
+    pub hart6: crate::hart::Hart<6>,
+    /// Hardware hart 7.
+    pub hart7: crate::hart::Hart<7>,
 }
 
 /// K1/M1 peripheral ownership.
 pub struct Peripherals {
+    /// Exclusive application-hart tokens.
+    pub harts: Harts,
+    /// Dedicated PMIC I²C pads.
+    pub pmic_pads: PmicPads,
     /// I2C0 (TWSI0) peripheral.
     pub i2c0: I2C0,
     /// I2C1 (TWSI1) peripheral.
@@ -183,9 +272,11 @@ pub struct Peripherals {
     /// Generic counter peripheral.
     pub counter: COUNTER,
     /// Exclusive APBC clock tokens.
-    pub apbc_clocks: ApbcClocks<'static>,
+    pub apbc_clocks: ApbcClocks,
     /// Application-processor power, clock, and reset peripheral.
     pub apmu: APMU,
+    /// CPU configuration peripheral.
+    pub ciu: CIU,
     /// Exclusive GPIO pad tokens.
     pub gpio: GpioPads,
     /// UART0 peripheral.
@@ -219,6 +310,7 @@ impl Peripherals {
     ///
     /// # Safety
     /// The hardware-access requirements of [`Self::steal`] must hold.
+    #[inline]
     pub unsafe fn take() -> Option<Self> {
         if !super::claim_peripherals(&super::PERIPHERALS_TAKEN) {
             return None;
@@ -230,15 +322,46 @@ impl Peripherals {
     /// Acquires peripheral tokens without initializing hardware or checking ownership.
     ///
     /// # Safety
+    ///
+    /// Hart tokens must be unique, including after any previous spawn.
+    ///
     /// Run on K1/M1 with aligned, identity-mapped registers accessible at the current
-    /// privilege level, including secure UART1; retain valid power, upstream clocks
-    /// and reset for every access, permanently for consumed tokens and pad/clock tokens.
+    /// privilege level, including secure UART1.
+    ///
+    /// Retain valid power, upstream clocks and reset for every access,
+    /// permanently for consumed tokens and pad/clock tokens.
+    ///
     /// Stop conflicting users and DMA, including former pad users; no hart, firmware
     /// or duplicate owner may invalidate these guarantees, even after drop or forget.
+    ///
+    /// PLL sources must remain stable with a 24 MHz reference.
+    ///
+    /// Untracked clock consumers and DMA must tolerate shared-gate changes;
+    /// HAL consumers must retain their controller borrows.
+    ///
+    /// Used pads must have valid electrical settings,
+    /// and dedicated PWR_SCL/PWR_SDA must retain their I²C8 routing.
+    ///
+    /// The generic counter may be enabled; external writers must not reset it
+    /// or change its value while borrowed or after its token is consumed.
     #[inline]
     pub unsafe fn steal() -> Self {
         super::PERIPHERALS_TAKEN.store(true, core::sync::atomic::Ordering::Release);
         Self {
+            // SAFETY: These are all K1 application hart IDs; steal transfers them once.
+            harts: Harts {
+                hart0: unsafe { crate::hart::Hart::new() },
+                hart1: unsafe { crate::hart::Hart::new() },
+                hart2: unsafe { crate::hart::Hart::new() },
+                hart3: unsafe { crate::hart::Hart::new() },
+                hart4: unsafe { crate::hart::Hart::new() },
+                hart5: unsafe { crate::hart::Hart::new() },
+                hart6: unsafe { crate::hart::Hart::new() },
+                hart7: unsafe { crate::hart::Hart::new() },
+            },
+            pmic_pads: PmicPads {
+                _private: core::marker::PhantomData,
+            },
             i2c0: I2C0 {
                 _private: core::marker::PhantomData,
             },
@@ -278,6 +401,9 @@ impl Peripherals {
             // SAFETY: The caller transfers exclusive, permanently mapped APBC access.
             apbc_clocks: unsafe { ApbcClocks::new() },
             apmu: APMU {
+                _private: core::marker::PhantomData,
+            },
+            ciu: CIU {
                 _private: core::marker::PhantomData,
             },
             // SAFETY: The caller transfers all GPIO bits and MFPR registers once.
@@ -349,12 +475,27 @@ mod tests {
         register_type::<APBS, apbs::k1::RegisterBlock>();
         assert_eq!(APBS::ptr() as usize, 0xd409_0000);
         register_type::<MPMU, mpmu::k1::RegisterBlock>();
+        fn controller_types<A, M>()
+        where
+            A: apbs::Instance<'static, RegisterBlock = apbs::k1::RegisterBlock>,
+            M: mpmu::Instance<'static, RegisterBlock = mpmu::k1::RegisterBlock>,
+            for<'a> &'a mut A: apbs::Instance<'a, RegisterBlock = apbs::k1::RegisterBlock>,
+            for<'a> &'a mut M: mpmu::Instance<'a, RegisterBlock = mpmu::k1::RegisterBlock>,
+        {
+        }
+        controller_types::<APBS, MPMU>();
         assert_eq!(MPMU::ptr() as usize, 0xd405_0000);
         register_type::<MFPR, mfpr::k1::RegisterBlock>();
         assert_eq!(MFPR::ptr() as usize, 0xd401_e000);
         register_type::<QSPI, qspi::RegisterBlock>();
         assert_eq!(QSPI::ptr() as usize, 0xd420_c000);
         register_type::<COUNTER, counter::k1::RegisterBlock>();
+        fn counter_type<T: counter::Instance<'static>>()
+        where
+            for<'a> &'a mut T: counter::Instance<'a>,
+        {
+        }
+        counter_type::<COUNTER>();
         assert_eq!(COUNTER::ptr() as usize, 0xd500_1000);
         assert_eq!(
             APBS::ptr() as usize
@@ -401,6 +542,8 @@ mod tests {
         register_type::<APBC, apbc::k1::RegisterBlock>();
         assert_eq!(APBC::ptr() as usize, 0xd401_5000);
         assert_eq!(APMU::ptr() as usize, 0xd428_2800);
+        register_type::<CIU, ciu::k1::RegisterBlock>();
+        assert_eq!(CIU::ptr() as usize, 0xd428_2c00);
         assert_eq!(
             APMU::ptr() as usize + core::mem::offset_of!(apmu::k1::RegisterBlock, qspi_clock_reset),
             0xd428_2860,
@@ -418,9 +561,6 @@ mod tests {
         assert_eq!(UART9::ptr() as usize, 0xd401_7800);
         assert_eq!(R_UART0::ptr() as usize, 0xc088_1000);
         assert_eq!(R_UART1::ptr() as usize, 0xc088_d000);
-        assert_eq!(
-            core::mem::size_of::<Peripherals>(),
-            core::mem::size_of::<ApbcClocks<'static>>()
-        );
+        assert_eq!(core::mem::size_of::<Peripherals>(), 0);
     }
 }

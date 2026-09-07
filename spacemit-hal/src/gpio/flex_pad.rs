@@ -16,6 +16,7 @@ impl<'a> FlexPad<'a> {
     /// both mappings, power and clocks must remain valid, and no other code,
     /// hart, peripheral or DMA may control this pad during that lifetime.
     #[doc(hidden)]
+    #[inline]
     pub unsafe fn __new_k1(
         number: u8,
         gpio: &'a k1::RegisterBlock,
@@ -41,6 +42,7 @@ impl<'a> FlexPad<'a> {
     /// both mappings, power and clocks must remain valid, and no other code,
     /// hart, peripheral or DMA may control this pad during that lifetime.
     #[doc(hidden)]
+    #[inline]
     pub unsafe fn __new_k3(
         number: u8,
         gpio: &'a k3::RegisterBlock,

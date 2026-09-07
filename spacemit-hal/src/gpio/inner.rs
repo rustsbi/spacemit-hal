@@ -35,6 +35,7 @@ impl<'a> GpioInner<'a> {
         }
     }
 
+    #[inline]
     pub(super) fn with_configuration(
         mut self,
         configuration: &'a volatile_register::RW<u32>,
@@ -45,7 +46,8 @@ impl<'a> GpioInner<'a> {
         self
     }
 
-    pub(super) fn configure_function(self, function: u8) {
+    #[inline]
+    pub(super) fn configure_function(&self, function: u8) {
         assert!(function < 8, "GPIO alternate function must be in 0..8");
         if let Some(configuration) = self.configuration {
             // SAFETY: Exclusive MFPR register; change only AF_SEL [2:0], preserving RW EDGE_CLEAR.
@@ -54,14 +56,14 @@ impl<'a> GpioInner<'a> {
     }
 
     #[inline]
-    pub(super) fn configure_input(self) {
+    pub(super) fn configure_input(&self) {
         // SAFETY: Selects only the uniquely owned pin.
         unsafe { self.registers.direction_clear.write(self.mask) };
         self.configure_function(self.gpio_function);
     }
 
     #[inline]
-    pub(super) fn configure_output(self, initial_state: PinState) {
+    pub(super) fn configure_output(&self, initial_state: PinState) {
         // Set the latch before enabling output.
         self.set_state(initial_state);
         // SAFETY: Selects only the uniquely owned pin.
@@ -70,12 +72,12 @@ impl<'a> GpioInner<'a> {
     }
 
     #[inline]
-    pub(super) fn is_high(self) -> bool {
+    pub(super) fn is_high(&self) -> bool {
         self.registers.pin_level.read() & self.mask != 0
     }
 
     #[inline]
-    pub(super) fn set_state(self, state: PinState) {
+    pub(super) fn set_state(&self, state: PinState) {
         let register = match state {
             PinState::Low => self.registers.pin_output_clear,
             PinState::High => self.registers.pin_output_set,

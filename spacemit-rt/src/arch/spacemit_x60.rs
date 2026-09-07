@@ -7,12 +7,17 @@
 #[cfg(all(feature = "spacemit-x60", target_arch = "riscv64", target_os = "none"))]
 pub use super::riscv::halt;
 
-/// Initializes the current hart and enters `__spacemit_rt_main()`.
+/// Initializes this hart and runs its boot or spawned entry.
 ///
 /// # Safety
 /// The caller must satisfy the [machine-entry contract](super) and execute on
 /// a K1/M1 X60 hart.
 #[cfg(all(feature = "spacemit-x60", target_arch = "riscv64", target_os = "none"))]
+#[cfg_attr(
+    any(feature = "k1-bootrom", feature = "k1-cpu"),
+    unsafe(export_name = "_start"),
+    unsafe(link_section = ".text.entry")
+)]
 #[unsafe(naked)]
 pub unsafe extern "C" fn start() -> ! {
     core::arch::naked_asm!(
@@ -23,7 +28,7 @@ pub unsafe extern "C" fn start() -> ! {
         // Do not inherit MPRV from the loader.
         "li      t0, 0x20000
         csrc    mstatus, t0
-        call    {initialize_stack}",
+        csrr    tp, mhartid",
         // ML2SETUP: enable this hart's snoop port before enabling its data cache.
         "andi    t0, tp, 3
         li      t1, 1
@@ -31,7 +36,8 @@ pub unsafe extern "C" fn start() -> ! {
         csrs    0x7f0, t1",
         // FEATURECTL: vendor K1 fence/cache fixes and vector LS dual-issue workaround.
         "li      t0, 0x800280
-        csrs    0xbf9, t0",
+        csrs    0xbf9, t0
+        call    {initialize_coherency}",
         // MSETUP: D/I cache, branch prediction, prefetch, misaligned access and ECC.
         "li      t0, 0x10073
         csrs    0x7c0, t0
@@ -47,7 +53,7 @@ pub unsafe extern "C" fn start() -> ! {
         tail    {halt}
         .option pop",
         start_rust = sym super::riscv::start_rust,
+        initialize_coherency = sym super::riscv::initialize_coherency,
         halt = sym halt,
-        initialize_stack = sym super::riscv::initialize_stack,
     );
 }

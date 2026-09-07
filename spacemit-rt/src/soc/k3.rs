@@ -1,6 +1,6 @@
 //! K3 peripheral ownership and addresses.
 
-use spacemit_hal::{apbc, apbs, apmu, gpio, i2c, mfpr, mpmu, qspi, uart};
+use spacemit_hal::{apbc, apbs, apmu, ciu, gpio, i2c, mfpr, mpmu, qspi, uart};
 
 // Address map: Linux k3.dtsi and the K3 pico-ITX running device tree.
 // https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k3.dtsi
@@ -35,6 +35,8 @@ soc! {
     pub struct APBC => 0xd401_5000, apbc::k3::RegisterBlock;
     /// Application-processor power, clock, and reset peripheral.
     pub struct APMU => 0xd428_2800, apmu::k3::RegisterBlock;
+    /// CPU configuration peripheral.
+    pub struct CIU => 0xd428_2c00, ciu::k3::RegisterBlock;
     /// GPIO peripheral.
     pub struct GPIO => 0xd401_9000, gpio::k3::RegisterBlock;
     /// UART0 peripheral.
@@ -72,6 +74,9 @@ soc! {
     /// Real-time-domain UART5 peripheral.
     pub struct R_UART5 => 0xc088_1500, uart::RegisterBlock;
 }
+
+impl_clock_controller!(apbs, APBS, apbs::k3::RegisterBlock);
+impl_clock_controller!(mpmu, MPMU, mpmu::k3::RegisterBlock);
 
 impl_uart!(
     UART0, UART1, UART2, UART3, UART4, UART5, UART6, UART7, UART8, UART9, UART10, R_UART0, R_UART1,
@@ -137,18 +142,56 @@ apbc_clocks! {
         UART10 => uart10, uart10_clock_reset;
     }
     i2c {
-        I2C0 => i2c0, twsi0_clock_reset, from_register;
-        I2C1 => i2c1, twsi1_clock_reset, from_register;
-        I2C2 => i2c2, twsi2_clock_reset, from_register;
-        I2C4 => i2c4, twsi4_clock_reset, from_register;
-        I2C5 => i2c5, twsi5_clock_reset, from_register;
-        I2C6 => i2c6, twsi6_clock_reset, from_register;
-        I2C8 => i2c8, twsi8_clock_reset, from_register;
+        I2C0 => i2c0, twsi0_clock_reset;
+        I2C1 => i2c1, twsi1_clock_reset;
+        I2C2 => i2c2, twsi2_clock_reset;
+        I2C4 => i2c4, twsi4_clock_reset;
+        I2C5 => i2c5, twsi5_clock_reset;
+        I2C6 => i2c6, twsi6_clock_reset;
+        I2C8 => i2c8, twsi8_clock_reset;
     }
+}
+
+/// Exclusive application-hart tokens.
+pub struct Harts {
+    /// Hardware hart 0.
+    pub hart0: crate::hart::Hart<0>,
+    /// Hardware hart 1.
+    pub hart1: crate::hart::Hart<1>,
+    /// Hardware hart 2.
+    pub hart2: crate::hart::Hart<2>,
+    /// Hardware hart 3.
+    pub hart3: crate::hart::Hart<3>,
+    /// Hardware hart 4.
+    pub hart4: crate::hart::Hart<4>,
+    /// Hardware hart 5.
+    pub hart5: crate::hart::Hart<5>,
+    /// Hardware hart 6.
+    pub hart6: crate::hart::Hart<6>,
+    /// Hardware hart 7.
+    pub hart7: crate::hart::Hart<7>,
+    /// Hardware hart 8.
+    pub hart8: crate::hart::Hart<8>,
+    /// Hardware hart 9.
+    pub hart9: crate::hart::Hart<9>,
+    /// Hardware hart 10.
+    pub hart10: crate::hart::Hart<10>,
+    /// Hardware hart 11.
+    pub hart11: crate::hart::Hart<11>,
+    /// Hardware hart 12.
+    pub hart12: crate::hart::Hart<12>,
+    /// Hardware hart 13.
+    pub hart13: crate::hart::Hart<13>,
+    /// Hardware hart 14.
+    pub hart14: crate::hart::Hart<14>,
+    /// Hardware hart 15.
+    pub hart15: crate::hart::Hart<15>,
 }
 
 /// K3 peripheral ownership.
 pub struct Peripherals {
+    /// Exclusive application-hart tokens.
+    pub harts: Harts,
     /// I2C0 (TWSI0) peripheral.
     pub i2c0: I2C0,
     /// I2C1 (TWSI1) peripheral.
@@ -170,9 +213,11 @@ pub struct Peripherals {
     /// Quad-SPI memory-controller peripheral.
     pub qspi: QSPI,
     /// Exclusive APBC clock tokens.
-    pub apbc_clocks: ApbcClocks<'static>,
+    pub apbc_clocks: ApbcClocks,
     /// Application-processor power, clock, and reset peripheral.
     pub apmu: APMU,
+    /// CPU configuration peripheral.
+    pub ciu: CIU,
     /// Exclusive GPIO pad tokens.
     pub gpio: GpioPads,
     /// UART0 peripheral.
@@ -216,6 +261,7 @@ impl Peripherals {
     ///
     /// # Safety
     /// The hardware-access requirements of [`Self::steal`] must hold.
+    #[inline]
     pub unsafe fn take() -> Option<Self> {
         if !super::claim_peripherals(&super::PERIPHERALS_TAKEN) {
             return None;
@@ -227,15 +273,47 @@ impl Peripherals {
     /// Acquires peripheral tokens without initializing hardware or checking ownership.
     ///
     /// # Safety
+    ///
+    /// Hart tokens must be unique, including after any previous spawn.
+    ///
     /// Run on K3 with aligned, identity-mapped registers accessible at the current
-    /// privilege level, including secure UART1; retain valid power, upstream clocks
-    /// and reset for every access, permanently for consumed tokens and pad/clock tokens.
+    /// privilege level, including secure UART1.
+    ///
+    /// Retain valid power, upstream clocks and reset for every access,
+    /// permanently for consumed tokens and pad/clock tokens.
+    ///
     /// Stop conflicting users and DMA, including former pad users; no hart, firmware
     /// or duplicate owner may invalidate these guarantees, even after drop or forget.
+    ///
+    /// PLL sources must remain stable.
+    ///
+    /// Untracked clock consumers and DMA must tolerate shared-gate changes;
+    /// HAL consumers must retain controller borrows.
+    ///
+    /// Used pads must have valid electrical settings.
     #[inline]
     pub unsafe fn steal() -> Self {
         super::PERIPHERALS_TAKEN.store(true, core::sync::atomic::Ordering::Release);
         Self {
+            // SAFETY: These are all K3 application hart IDs; steal transfers them once.
+            harts: Harts {
+                hart0: unsafe { crate::hart::Hart::new() },
+                hart1: unsafe { crate::hart::Hart::new() },
+                hart2: unsafe { crate::hart::Hart::new() },
+                hart3: unsafe { crate::hart::Hart::new() },
+                hart4: unsafe { crate::hart::Hart::new() },
+                hart5: unsafe { crate::hart::Hart::new() },
+                hart6: unsafe { crate::hart::Hart::new() },
+                hart7: unsafe { crate::hart::Hart::new() },
+                hart8: unsafe { crate::hart::Hart::new() },
+                hart9: unsafe { crate::hart::Hart::new() },
+                hart10: unsafe { crate::hart::Hart::new() },
+                hart11: unsafe { crate::hart::Hart::new() },
+                hart12: unsafe { crate::hart::Hart::new() },
+                hart13: unsafe { crate::hart::Hart::new() },
+                hart14: unsafe { crate::hart::Hart::new() },
+                hart15: unsafe { crate::hart::Hart::new() },
+            },
             i2c0: I2C0 {
                 _private: core::marker::PhantomData,
             },
@@ -269,6 +347,9 @@ impl Peripherals {
             // SAFETY: The caller transfers exclusive, permanently mapped APBC access.
             apbc_clocks: unsafe { ApbcClocks::new() },
             apmu: APMU {
+                _private: core::marker::PhantomData,
+            },
+            ciu: CIU {
                 _private: core::marker::PhantomData,
             },
             // SAFETY: The caller transfers all GPIO bits and MFPR registers once.
@@ -353,6 +434,15 @@ mod tests {
         register_type::<APBS, apbs::k3::RegisterBlock>();
         assert_eq!(APBS::ptr() as usize, 0xd409_0000);
         register_type::<MPMU, mpmu::k3::RegisterBlock>();
+        fn controller_types<A, M>()
+        where
+            A: apbs::Instance<'static, RegisterBlock = apbs::k3::RegisterBlock>,
+            M: mpmu::Instance<'static, RegisterBlock = mpmu::k3::RegisterBlock>,
+            for<'a> &'a mut A: apbs::Instance<'a, RegisterBlock = apbs::k3::RegisterBlock>,
+            for<'a> &'a mut M: mpmu::Instance<'a, RegisterBlock = mpmu::k3::RegisterBlock>,
+        {
+        }
+        controller_types::<APBS, MPMU>();
         assert_eq!(MPMU::ptr() as usize, 0xd405_0000);
         register_type::<MFPR, mfpr::k3::RegisterBlock>();
         assert_eq!(MFPR::ptr() as usize, 0xd401_e000);
@@ -408,6 +498,8 @@ mod tests {
         register_type::<APBC, apbc::k3::RegisterBlock>();
         assert_eq!(APBC::ptr() as usize, 0xd401_5000);
         assert_eq!(APMU::ptr() as usize, 0xd428_2800);
+        register_type::<CIU, ciu::k3::RegisterBlock>();
+        assert_eq!(CIU::ptr() as usize, 0xd428_2c00);
         assert_eq!(
             APMU::ptr() as usize + core::mem::offset_of!(apmu::k3::RegisterBlock, qspi_clock_reset),
             0xd428_2860,
@@ -430,9 +522,6 @@ mod tests {
         assert_eq!(R_UART3::ptr() as usize, 0xc088_1300);
         assert_eq!(R_UART4::ptr() as usize, 0xc088_1400);
         assert_eq!(R_UART5::ptr() as usize, 0xc088_1500);
-        assert_eq!(
-            core::mem::size_of::<Peripherals>(),
-            core::mem::size_of::<ApbcClocks<'static>>()
-        );
+        assert_eq!(core::mem::size_of::<Peripherals>(), 0);
     }
 }

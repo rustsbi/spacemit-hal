@@ -24,6 +24,7 @@ impl<'a> Input<'a> {
     {
         struct RestoreInput<'b>(GpioInner<'b>);
         impl Drop for RestoreInput<'_> {
+            #[inline]
             fn drop(&mut self) {
                 self.0.configure_input();
             }

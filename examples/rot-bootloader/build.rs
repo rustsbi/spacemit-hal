@@ -7,9 +7,6 @@ fn main() {
     }
     assert_eq!(env::var("TARGET").unwrap(), "riscv64imac-unknown-none-elf");
     let script = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("link.x");
-    println!(
-        "cargo:rustc-link-arg-bin=rot-bootloader=-T{}",
-        script.display()
-    );
-    println!("cargo:rustc-link-arg-bin=rot-bootloader=--no-relax");
+    println!("cargo:rustc-link-arg-bins=-T{}", script.display());
+    println!("cargo:rustc-link-arg-bins=--no-relax");
 }

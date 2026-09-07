@@ -40,7 +40,8 @@ pub struct RegisterBlock {
     _reserved_0x050: [u32; 4],
     /// TWSI6 (I²C6) clock and reset control.
     pub twsi6_clock_reset: RW<TwsiClockReset>,
-    _reserved_0x064: [u32; 1],
+    /// Generic counter clock source selection.
+    pub counter_clock_control: RW<CounterClockControl>,
     /// TWSI7 (I²C7) clock and reset control.
     pub twsi7_clock_reset: RW<TwsiClockReset>,
     _reserved_0x06c: [u32; 1],
@@ -60,6 +61,32 @@ pub struct RegisterBlock {
     _reserved_0x0a0: [u32; 984],
 }
 
+/// K1 `APBC_COUNTER_CLK_RST` (User Manual §9.2.4.3.20, p. 202).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct CounterClockControl(u32);
+
+impl CounterClockControl {
+    /// Creates a value from register bits.
+    #[inline]
+    pub const fn from_bits(bits: u32) -> Self {
+        Self(bits)
+    }
+
+    /// Returns the register bits.
+    #[inline]
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+
+    /// Whether software selects the 24 MHz reference without automatic switching.
+    #[inline]
+    pub const fn is_reference_selected(self) -> bool {
+        // Bit 0: FREQ_HW_CTRL; bit 1: FREQ_SW_SEL (0 = 24 MHz, 1 = 32 kHz).
+        self.0 & 3 == 0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::RegisterBlock;
@@ -77,6 +104,7 @@ mod tests {
         assert_eq!(offset_of!(RegisterBlock, twsi4_clock_reset), 0x040);
         assert_eq!(offset_of!(RegisterBlock, twsi5_clock_reset), 0x04c);
         assert_eq!(offset_of!(RegisterBlock, twsi6_clock_reset), 0x060);
+        assert_eq!(offset_of!(RegisterBlock, counter_clock_control), 0x064);
         assert_eq!(offset_of!(RegisterBlock, twsi7_clock_reset), 0x068);
         assert_eq!(offset_of!(RegisterBlock, uart4_clock_reset), 0x070);
         assert_eq!(offset_of!(RegisterBlock, uart5_clock_reset), 0x074);

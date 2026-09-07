@@ -16,10 +16,12 @@ targets = ["riscv64imac-unknown-none-elf"]
 features = ["k3-cpu"]
 
 [dependencies]
+riscv.workspace = true
 spacemit-rt-macros = { version = "0.0.0", path = "macros" }
 cfg-if = { workspace = true }
 spacemit-hal = { workspace = true }
 spacemit-riscv = { workspace = true }
+volatile-register.workspace = true
 
 [features]
 default = []
@@ -28,10 +30,13 @@ default = []
 # K1 and M1 share X60 application clusters and an N308 real-time core.
 k1-cpu = ["spacemit-x60"]
 k1-mcu = ["nuclei-n308"]
+k1-bootrom = ["spacemit-x60"]
 # K3 has X100 application, A100 AI, and RT24 real-time core groups.
 k3-cpu = ["spacemit-x100"]
 k3-ai = ["spacemit-a100"]
 k3-mcu = ["spacemit-rt24"]
+# Use X100 as the entry while retaining A100 startup support.
+k3-bootrom = ["spacemit-x100", "spacemit-a100"]
 
 # Microarchitecture specific features.
 nuclei-n308 = []
@@ -43,11 +48,5 @@ spacemit-x60 = []
 [[example]]
 name = "arch-link"
 path = "tests/arch/entry.rs"
-test = false
-bench = false
-
-[[example]]
-name = "multihart"
-path = "tests/arch/multihart.rs"
 test = false
 bench = false

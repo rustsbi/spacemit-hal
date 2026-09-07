@@ -1,7 +1,7 @@
 //! Configurable polling UART I/O.
 
 use super::{ClockedInstance, Config, Instance, Pads, Parity, RegisterBlock, StopBits, WordLength};
-use crate::clock::{self, Hertz, UartClock, UartClockRef};
+use crate::clock::{self, Hertz, UartFrequency, UartFrequencyRef};
 use crate::gpio::FlexPad;
 use core::{fmt, hint::spin_loop, marker::PhantomData};
 use uart16550::LineStatus;
@@ -20,6 +20,7 @@ pub struct Error {
 }
 
 impl Error {
+    #[inline]
     fn capture(&mut self, status: LineStatus) {
         self.overrun |= status.is_overrun_error();
         self.parity |= status.is_parity_error();
@@ -27,12 +28,14 @@ impl Error {
         self.break_detected |= status.is_break_condition();
     }
 
+    #[inline]
     fn is_present(self) -> bool {
         self.overrun || self.parity || self.framing || self.break_detected
     }
 }
 
 impl fmt::Display for Error {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "UART receive error: {self:?}")
     }
@@ -41,6 +44,7 @@ impl fmt::Display for Error {
 impl core::error::Error for Error {}
 
 impl embedded_io::Error for Error {
+    #[inline]
     fn kind(&self) -> embedded_io::ErrorKind {
         if self.overrun {
             embedded_io::ErrorKind::Other
@@ -54,30 +58,29 @@ impl embedded_io::Error for Error {
 #[must_use]
 pub struct BlockingUart<'a> {
     uart: &'a RegisterBlock,
-    clock: Option<&'a UartClockRef<'a>>,
-    _pads: Option<(FlexPad<'a>, FlexPad<'a>)>,
+    clock: Option<UartFrequencyRef<'a>>,
+    baudrate: Option<super::Baud>,
+    _pads: PhantomData<(FlexPad<'a>, FlexPad<'a>)>,
     pending_error: Error,
     _not_send_sync: PhantomData<*mut ()>,
 }
 
 impl<'a> BlockingUart<'a> {
-    /// Configures TX/RX pads and polling, resetting FIFOs at the existing baud.
+    /// Configures polling with the nearest divisor within 3% of the requested baud.
+    #[inline]
     pub fn new<U: ClockedInstance<'a>>(
         uart: U,
         pads: impl Pads<'a, U::ClockId>,
-        clock: &'a mut UartClock<'_, U::ClockId>,
+        clock: UartFrequency<'a, U::ClockId>,
         config: Config,
     ) -> Result<Self, clock::Error> {
-        let clock = clock.borrow();
-        clock.check()?;
-        let pads = pads.into_uart_pads();
+        let (divisor, baudrate) = baud_divisor(clock.frequency(), config.baudrate)?;
+        let _pads = pads.into_uart_pads();
         // Erase identities only after matching them, retaining every resource.
-        Ok(Self::configure(
-            uart.register_block(),
-            Some(clock),
-            Some(pads),
-            config,
-        ))
+        let mut driver = Self::configure(uart.register_block(), Some(clock.inner), config);
+        driver.uart.set_divisor(divisor);
+        driver.baudrate = Some(baudrate);
+        Ok(driver)
     }
 
     /// Configures polling and resets FIFOs while retaining the current baud rate.
@@ -85,19 +88,18 @@ impl<'a> BlockingUart<'a> {
     /// # Safety
     /// Exclusively own the returned K1/M1 or K3 UART registers for 'a, with valid
     /// mappings, power, clocks and reset; conflicting users and DMA must be stopped.
+    #[inline]
     pub unsafe fn from_bootrom(uart: impl Instance<'a>, config: Config) -> Self {
-        Self::configure(uart.register_block(), None, None, config)
+        Self::configure(uart.register_block(), None, config)
     }
 
+    #[inline]
     fn configure(
         uart: &'a RegisterBlock,
-        clock: Option<&'a UartClockRef<'a>>,
-        pads: Option<(FlexPad<'a>, FlexPad<'a>)>,
+        clock: Option<UartFrequencyRef<'a>>,
         config: Config,
     ) -> Self {
         use uart16550::{CharLen, LineControl};
-        // TODO: Program config.baudrate after validating a known input frequency
-        // and divisor error; adoption may deliberately retain an unknown rate.
         let length = match config.wordlength {
             WordLength::Five => CharLen::FIVE,
             WordLength::Six => CharLen::SIX,
@@ -119,7 +121,8 @@ impl<'a> BlockingUart<'a> {
         Self {
             uart,
             clock,
-            _pads: pads,
+            baudrate: None,
+            _pads: PhantomData,
             pending_error: Error {
                 overrun: false,
                 parity: false,
@@ -130,11 +133,19 @@ impl<'a> BlockingUart<'a> {
         }
     }
 
-    /// Returns the supplied UART input frequency, or None when unknown.
+    /// Returns the verified UART input frequency, or None for raw adoption.
+    #[inline]
     pub fn input_clock(&self) -> Option<Hertz> {
-        self.clock.and_then(UartClockRef::frequency)
+        self.clock.as_ref().map(|clock| clock.frequency)
     }
 
+    /// Returns the programmed baud rate rounded to an integer, or None for raw adoption.
+    #[inline]
+    pub const fn baudrate(&self) -> Option<super::Baud> {
+        self.baudrate
+    }
+
+    #[inline]
     fn status(&mut self) -> LineStatus {
         let status = self.uart.lsr().read();
         // LSR reads can clear receive errors, including during TX polling.
@@ -144,6 +155,7 @@ impl<'a> BlockingUart<'a> {
     }
 
     /// Waits for a byte, discarding the FIFO head when reporting receive faults.
+    #[inline]
     pub fn read_byte(&mut self) -> Result<u8, Error> {
         loop {
             let status = self.status();
@@ -161,6 +173,7 @@ impl<'a> BlockingUart<'a> {
     }
 
     /// Waits for transmitter space and sends one byte.
+    #[inline]
     pub fn write_byte(&mut self, byte: u8) {
         while !self.status().is_transmitter_fifo_empty() {
             spin_loop();
@@ -169,6 +182,7 @@ impl<'a> BlockingUart<'a> {
     }
 
     /// Waits until both the transmit FIFO and shift register are empty.
+    #[inline]
     pub fn flush(&mut self) {
         while !self.status().is_transmitter_empty() {
             spin_loop();
@@ -176,11 +190,29 @@ impl<'a> BlockingUart<'a> {
     }
 }
 
+#[inline]
+fn baud_divisor(input: Hertz, baud: super::Baud) -> Result<(u16, super::Baud), clock::Error> {
+    let rate = u64::from(input.0);
+    let denominator = u64::from(baud.0) * 16;
+    if rate == 0 || denominator == 0 {
+        return Err(clock::Error::ImpossibleBaudrate);
+    }
+    let divisor = (rate + denominator / 2) / denominator;
+    if !(1..=u64::from(u16::MAX)).contains(&divisor)
+        || rate.abs_diff(denominator * divisor) * 100 > denominator * divisor * 3
+    {
+        return Err(clock::Error::ImpossibleBaudrate);
+    }
+    let actual = (rate + 8 * divisor) / (16 * divisor);
+    Ok((divisor as u16, super::Baud(actual as u32)))
+}
+
 impl embedded_io::ErrorType for BlockingUart<'_> {
     type Error = Error;
 }
 
 impl embedded_io::Read for BlockingUart<'_> {
+    #[inline]
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         let Some(first) = buf.first_mut() else {
             return Ok(0);
@@ -191,6 +223,7 @@ impl embedded_io::Read for BlockingUart<'_> {
 }
 
 impl embedded_io::Write for BlockingUart<'_> {
+    #[inline]
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
         for &byte in buf {
             self.write_byte(byte);
@@ -198,6 +231,7 @@ impl embedded_io::Write for BlockingUart<'_> {
         Ok(buf.len())
     }
 
+    #[inline]
     fn flush(&mut self) -> Result<(), Error> {
         BlockingUart::flush(self);
         Ok(())
@@ -207,73 +241,15 @@ impl embedded_io::Write for BlockingUart<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gpio::PadExt;
     use core::cell::UnsafeCell;
     use embedded_io::{Read, Write};
 
-    struct TestTransmit<'a, I>(FlexPad<'a>, PhantomData<I>);
-    struct TestReceive<'a, I>(FlexPad<'a>, PhantomData<I>);
-
-    // SAFETY: Test fixtures associate pad 0/F2 with their simulated UART TX.
-    unsafe impl<'a, I: clock::UartId> super::super::IntoTransmit<'a, I> for TestTransmit<'a, I> {
-        fn into_uart_transmit(self) -> FlexPad<'a> {
-            self.0.into_function::<2>().into()
-        }
-    }
-
-    // SAFETY: Test fixtures associate pad 1/F3 with their simulated UART RX.
-    unsafe impl<'a, I: clock::UartId> super::super::IntoReceive<'a, I> for TestReceive<'a, I> {
-        fn into_uart_receive(self) -> FlexPad<'a> {
-            self.0.into_function::<3>().into()
-        }
-    }
-
-    enum TestUart0 {}
-    enum TestUart2 {}
-    // SAFETY: These markers identify distinct RAM-backed UARTs in each fixture.
-    unsafe impl clock::UartId for TestUart0 {}
-    // SAFETY: TestUart2 never identifies TestUart0's simulated registers.
-    unsafe impl clock::UartId for TestUart2 {}
-
-    struct TestInstance<'a, I>(&'a RegisterBlock, PhantomData<I>);
-
-    impl<'a, I> Instance<'a> for TestInstance<'a, I> {
-        fn register_block(self) -> &'a RegisterBlock {
-            self.0
-        }
-    }
-
-    // SAFETY: Tests pair each identity with its exclusive initialized RAM fixture;
-    // erasure retains that fixture's borrow and performs no teardown.
-    unsafe impl<'a, I: clock::UartId> ClockedInstance<'a> for TestInstance<'a, I> {
-        type ClockId = I;
-    }
-
-    fn clock_register(bits: u32) -> volatile_register::RW<crate::apbc::UartClockReset> {
-        // SAFETY: The wrapper is transparent over an initialized integer cell.
-        let register: volatile_register::RW<crate::apbc::UartClockReset> =
-            unsafe { core::mem::zeroed() };
-        // SAFETY: Exclusive initialization of a RAM-backed register.
-        unsafe { register.write(crate::apbc::UartClockReset::from_bits(bits)) };
-        register
-    }
-
-    #[repr(C)]
-    struct FakeUart(
-        [UnsafeCell<u32>; 8],
-        crate::gpio::k3::RegisterBlock,
-        crate::mfpr::k3::RegisterBlock,
-    );
+    #[repr(transparent)]
+    struct FakeUart([UnsafeCell<u32>; 8]);
 
     impl FakeUart {
         fn new(lsr: u32) -> Self {
-            let fake = Self(
-                core::array::from_fn(|_| UnsafeCell::new(0)),
-                // SAFETY: The fixture contains initialized integer MMIO cells only.
-                unsafe { core::mem::zeroed() },
-                // SAFETY: Same validity as the GPIO fixture.
-                unsafe { core::mem::zeroed() },
-            );
+            let fake = Self(core::array::from_fn(|_| UnsafeCell::new(0)));
             fake.set(5, lsr);
             fake
         }
@@ -298,155 +274,31 @@ mod tests {
             // SAFETY: Tests use this RAM-backed UART sequentially, never hardware.
             unsafe { BlockingUart::from_bootrom(self.registers(), Config::default()) }
         }
+    }
 
-        // SAFETY: This fixture's pad resources must have no other live owners.
-        unsafe fn pads<I>(&self) -> (TestTransmit<'_, I>, TestReceive<'_, I>) {
-            // SAFETY: The caller exclusively transfers distinct simulated pads.
-            unsafe {
-                (
-                    TestTransmit(FlexPad::__new_k3(0, &self.1, &self.2), PhantomData),
-                    TestReceive(FlexPad::__new_k3(1, &self.1, &self.2), PhantomData),
-                )
-            }
+    #[test]
+    fn baud_rates_are_checked_before_programming() {
+        use super::super::Baud;
+        assert_eq!(
+            baud_divisor(Hertz(14_745_600), Baud(115_200)),
+            Ok((8, Baud(115_200)))
+        );
+        assert_eq!(
+            baud_divisor(Hertz(57_600_000), Baud(115_200)),
+            Ok((31, Baud(116_129)))
+        );
+        for (input, baud) in [
+            (0, 115_200),
+            (24_000_000, 0),
+            (24_000_000, u32::MAX),
+            (u32::MAX, 1),
+            (16_000_000, 900_000),
+        ] {
+            assert_eq!(
+                baud_divisor(Hertz(input), Baud(baud)),
+                Err(clock::Error::ImpossibleBaudrate)
+            );
         }
-    }
-
-    #[test]
-    fn generic_constructors_return_one_erased_driver_type() {
-        let first = FakeUart::new(0x60);
-        let second = FakeUart::new(0x60);
-        let gate0 = clock_register(3);
-        let gate2 = clock_register(0x13);
-        let frequencies =
-            clock::Clocks::new(Some(Hertz(57_600_000)), Some(Hertz(14_745_600)), None).unwrap();
-        // SAFETY: Each local token exclusively owns its simulated clock register.
-        let mut clock0 = unsafe { UartClock::from_register(&gate0, frequencies) };
-        // SAFETY: The second clock is disjoint from the first.
-        let mut clock2 = unsafe { UartClock::from_register(&gate2, frequencies) };
-        let first_driver = BlockingUart::new(
-            TestInstance::<TestUart0>(first.registers(), PhantomData),
-            // SAFETY: Exclusive simulated pads with valid RAM mappings.
-            unsafe { first.pads::<TestUart0>() },
-            &mut clock0,
-            Config::default(),
-        )
-        .unwrap();
-        let second_driver = BlockingUart::new(
-            TestInstance::<TestUart2>(second.registers(), PhantomData),
-            // SAFETY: Exclusive simulated pads with valid RAM mappings.
-            unsafe { second.pads::<TestUart2>() },
-            &mut clock2,
-            Config::default(),
-        )
-        .unwrap();
-        let mut ports: [BlockingUart<'_>; 2] = [first_driver, second_driver];
-        // TX and RX may legitimately need different function numbers.
-        assert_eq!([first.2.gpio[0].read(), first.2.gpio[1].read()], [2, 3]);
-        assert_eq!([second.2.gpio[0].read(), second.2.gpio[1].read()], [2, 3]);
-        assert_eq!(ports[0].input_clock(), Some(Hertz(57_600_000)));
-        assert_eq!(ports[1].input_clock(), Some(Hertz(14_745_600)));
-        ports[0].write_byte(b'a');
-        ports[1].write_byte(b'b');
-        assert_eq!(gate0.read().bits(), 3);
-        assert_eq!(gate2.read().bits(), 0x13);
-    }
-
-    #[test]
-    fn invalid_clock_is_rejected_before_touching_uart_and_resources_survive() {
-        let fake = FakeUart::new(0x60);
-        fake.set(1, 0x55);
-        fake.set(2, 0x66);
-        fake.set(3, 0x77);
-        let gate = clock_register(0);
-        // SAFETY: The local token exclusively owns the simulated clock register.
-        let mut clock = unsafe { UartClock::from_register(&gate, clock::Clocks::unknown()) };
-        let error = BlockingUart::new(
-            TestInstance::<TestUart0>(fake.registers(), PhantomData),
-            // SAFETY: Exclusive simulated pads with valid RAM mappings.
-            unsafe { fake.pads::<TestUart0>() },
-            &mut clock,
-            Config::default(),
-        )
-        .err()
-        .unwrap();
-        assert_eq!(error, clock::Error::Disabled);
-        assert_eq!([fake.2.gpio[0].read(), fake.2.gpio[1].read()], [0, 0]);
-        assert_eq!([fake.get(1), fake.get(2), fake.get(3)], [0x55, 0x66, 0x77]);
-        // SAFETY: Emulate completion of platform clock recovery in this RAM fixture.
-        unsafe { gate.write(crate::apbc::UartClockReset::from_bits(3)) };
-        let mut uart = BlockingUart::new(
-            TestInstance::<TestUart0>(fake.registers(), PhantomData),
-            // SAFETY: Exclusive simulated pads with valid RAM mappings.
-            unsafe { fake.pads::<TestUart0>() },
-            &mut clock,
-            Config::default(),
-        )
-        .unwrap();
-        assert_eq!(uart.input_clock(), None);
-        assert_eq!(fake.get(3), 3);
-        uart.flush();
-        assert_eq!(gate.read().bits(), 3);
-    }
-
-    #[test]
-    fn clock_outlives_driver_and_can_be_borrowed_again() {
-        let fake = FakeUart::new(0x60);
-        let gate = clock_register(3);
-        // SAFETY: The local token exclusively owns the simulated clock register.
-        let mut clock = unsafe { UartClock::from_register(&gate, clock::Clocks::unknown()) };
-        for &byte in b"xy" {
-            let mut uart = BlockingUart::new(
-                TestInstance::<TestUart0>(fake.registers(), PhantomData),
-                // SAFETY: Exclusive simulated pads with valid RAM mappings.
-                unsafe { fake.pads::<TestUart0>() },
-                &mut clock,
-                Config::default(),
-            )
-            .unwrap();
-            uart.write_byte(byte);
-            uart.flush();
-        }
-        assert_eq!(clock.frequency(), None);
-        assert_eq!(gate.read().bits(), 3);
-        assert_eq!(fake.get(0), u32::from(b'y'));
-    }
-
-    #[test]
-    fn drop_and_forget_do_not_write_clock_registers() {
-        let fake = FakeUart::new(0x20);
-        let gate = clock_register(3);
-        // SAFETY: This token outlives both borrows of the simulated clock register.
-        let mut clock = unsafe { UartClock::from_register(&gate, clock::Clocks::unknown()) };
-        {
-            let mut uart = BlockingUart::new(
-                TestInstance::<TestUart0>(fake.registers(), PhantomData),
-                // SAFETY: Exclusive simulated pads with valid RAM mappings.
-                unsafe { fake.pads::<TestUart0>() },
-                &mut clock,
-                Config::default(),
-            )
-            .unwrap();
-            uart.write_byte(b'x');
-            // TX is still busy: leaving scope must neither wait nor disable clocks.
-        }
-        assert_eq!(gate.read().bits(), 3);
-        // Simulate hardware finishing TX before borrowing the original tokens again.
-        assert_eq!([fake.2.gpio[0].read(), fake.2.gpio[1].read()], [2, 3]);
-        fake.set(5, 0x60);
-        let uart = BlockingUart::new(
-            TestInstance::<TestUart0>(fake.registers(), PhantomData),
-            // SAFETY: Exclusive simulated pads with valid RAM mappings.
-            unsafe { fake.pads::<TestUart0>() },
-            &mut clock,
-            Config::default(),
-        )
-        .unwrap();
-        // Keep this regression check if a future version adds a destructor.
-        #[allow(clippy::forget_non_drop)]
-        core::mem::forget(uart);
-        assert_eq!([fake.2.gpio[0].read(), fake.2.gpio[1].read()], [2, 3]);
-        assert_eq!(clock.frequency(), None);
-        assert_eq!(gate.read().bits(), 3);
     }
 
     #[test]

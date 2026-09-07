@@ -18,6 +18,7 @@ targets = ["riscv64imac-unknown-none-elf"]
 embedded-hal = { workspace = true }
 embedded-io = { workspace = true }
 embedded-time = { workspace = true }
+riscv = { workspace = true }
 uart16550 = { workspace = true }
 vcell = { workspace = true }
 volatile-register = { workspace = true }

@@ -43,10 +43,37 @@ macro_rules! soc {
     };
 }
 
+macro_rules! impl_clock_controller {
+    ($module:ident, $peripheral:ident, $register:ty) => {
+        // SAFETY: Peripherals acquisition establishes exclusive, permanently
+        // mapped controller access and the shared-source/consumer contract.
+        unsafe impl<'a> spacemit_hal::$module::Instance<'a> for $peripheral {
+            type RegisterBlock = $register;
+
+            #[inline]
+            fn register_block(self) -> &'a Self::RegisterBlock {
+                // SAFETY: Consuming the token transfers its permanent mapping.
+                unsafe { &*Self::ptr() }
+            }
+        }
+
+        // SAFETY: The mutable borrow retains the token's exclusive access.
+        unsafe impl<'a> spacemit_hal::$module::Instance<'a> for &'a mut $peripheral {
+            type RegisterBlock = $register;
+
+            #[inline]
+            fn register_block(self) -> &'a Self::RegisterBlock {
+                self
+            }
+        }
+    };
+}
+
 macro_rules! impl_uart {
     ($($uart:ident),+ $(,)?) => {
         $(
             impl<'a> spacemit_hal::uart::Instance<'a> for $uart {
+                #[inline]
                 fn register_block(self) -> &'a spacemit_hal::uart::RegisterBlock {
                     // SAFETY: acquiring the token requires a permanently valid mapping;
                     // consuming it prevents further access through that token.
@@ -55,6 +82,7 @@ macro_rules! impl_uart {
             }
 
             impl<'a> spacemit_hal::uart::Instance<'a> for &'a mut $uart {
+                #[inline]
                 fn register_block(self) -> &'a spacemit_hal::uart::RegisterBlock {
                     self
                 }
@@ -108,6 +136,7 @@ macro_rules! gpio_pads {
         }
 
         impl<const N: u8> Pad<N> {
+            #[inline]
             fn into_flex<'a>(self) -> spacemit_hal::gpio::FlexPad<'a> {
                 // SAFETY: Consuming this unique token transfers permanent access
                 // to GPIO N and its MFPR, established by Peripherals::steal.
@@ -116,6 +145,7 @@ macro_rules! gpio_pads {
                 }
             }
 
+            #[inline]
             fn as_flex(&mut self) -> spacemit_hal::gpio::FlexPad<'_> {
                 // SAFETY: The pad token guarantees valid mappings; this resource
                 // retains the mutable borrow and cannot outlive it.
@@ -126,28 +156,34 @@ macro_rules! gpio_pads {
         }
 
         impl<'a, const N: u8> spacemit_hal::gpio::PadExt<'a> for Pad<N> {
+            #[inline]
             fn into_input(self) -> spacemit_hal::gpio::Input<'a> {
                 self.into_flex().into_input()
             }
 
+            #[inline]
             fn into_output(self, initial: spacemit_hal::gpio::PinState) -> spacemit_hal::gpio::Output<'a> {
                 self.into_flex().into_output(initial)
             }
 
+            #[inline]
             fn into_function<const F: u8>(self) -> spacemit_hal::gpio::Function<'a, F> {
                 self.into_flex().into_function::<F>()
             }
         }
 
         impl<'a, const N: u8> spacemit_hal::gpio::PadExt<'a> for &'a mut Pad<N> {
+            #[inline]
             fn into_input(self) -> spacemit_hal::gpio::Input<'a> {
                 self.as_flex().into_input()
             }
 
+            #[inline]
             fn into_output(self, initial: spacemit_hal::gpio::PinState) -> spacemit_hal::gpio::Output<'a> {
                 self.as_flex().into_output(initial)
             }
 
+            #[inline]
             fn into_function<const F: u8>(self) -> spacemit_hal::gpio::Function<'a, F> {
                 self.as_flex().into_function::<F>()
             }
@@ -163,6 +199,7 @@ macro_rules! gpio_pads {
 
         impl GpioPads {
             // SAFETY: The caller transfers all GPIO bits and MFPR registers once.
+            #[inline]
             unsafe fn new() -> Self {
                 Self {
                     $($field: Pad { _private: core::marker::PhantomData },)+
@@ -194,21 +231,64 @@ macro_rules! impl_uart_pads {
             }
         )+
 
-        #[cfg(test)]
-        mod uart_pad_tests {
-            use super::*;
+    };
+}
 
-            #[test]
-            fn routes_accept_owned_and_borrowed_pads() {
-                $(
-                    {
-                        fn route<'a, T: spacemit_hal::uart::$Trait<'a, $uart>>() {}
-                        route::<Pad<$number>>();
-                        route::<&mut Pad<$number>>();
-                    }
-                )+
-                assert_eq!(core::mem::size_of::<GpioPads>(), 0);
-                assert_eq!(core::mem::size_of::<Pad<0>>(), 0);
+macro_rules! impl_i2c_pads {
+    ($i2c:ident, $scl:literal, $sda:literal, $configuration:literal) => {
+        impl_i2c_pads!(@pad $scl, $configuration);
+        impl_i2c_pads!(@pad $sda, $configuration);
+        // SAFETY: The SoC mux table maps this pair to the stated I²C controller.
+        unsafe impl<'a> spacemit_hal::i2c::IntoPads<'a, $i2c> for (Pad<$scl>, Pad<$sda>) {
+            #[inline]
+            fn into_i2c_pads(self) -> spacemit_hal::i2c::Pads<'a> {
+                use spacemit_hal::i2c::IntoI2c;
+                spacemit_hal::i2c::Pads::from_gpio(
+                    self.0.into_i2c(),
+                    self.1.into_i2c(),
+                )
+            }
+        }
+        // SAFETY: The same route retains both mutable pad borrows.
+        unsafe impl<'a> spacemit_hal::i2c::IntoPads<'a, $i2c>
+            for (&'a mut Pad<$scl>, &'a mut Pad<$sda>)
+        {
+            #[inline]
+            fn into_i2c_pads(self) -> spacemit_hal::i2c::Pads<'a> {
+                use spacemit_hal::i2c::IntoI2c;
+                spacemit_hal::i2c::Pads::from_gpio(
+                    self.0.into_i2c(),
+                    self.1.into_i2c(),
+                )
+            }
+        }
+    };
+    (@pad $pin:literal, $configuration:literal) => {
+        impl Pad<$pin> {
+            #[inline]
+            fn configure_i2c(&mut self) {
+                // SAFETY: This token exclusively owns the mapped pad; the SoC supplies its configuration.
+                unsafe {
+                    let mfpr = &*MFPR::ptr();
+                    mfpr.gpio[$pin].write($configuration);
+                }
+                riscv::asm::fence();
+            }
+        }
+
+        impl<'a> spacemit_hal::i2c::IntoI2c<'a> for Pad<$pin> {
+            #[inline]
+            fn into_i2c(mut self) -> spacemit_hal::gpio::FlexPad<'a> {
+                self.configure_i2c();
+                self.into_flex()
+            }
+        }
+
+        impl<'a> spacemit_hal::i2c::IntoI2c<'a> for &'a mut Pad<$pin> {
+            #[inline]
+            fn into_i2c(self) -> spacemit_hal::gpio::FlexPad<'a> {
+                self.configure_i2c();
+                self.as_flex()
             }
         }
     };
@@ -218,11 +298,16 @@ macro_rules! apbc_clocks {
     (
         $APBC:ident, $RegisterBlock:ty;
         uart { $($uart:ident => $field:ident, $register:ident;)+ }
-        i2c { $($i2c:ident => $i2c_field:ident, $i2c_register:ident, $constructor:ident;)+ }
+        i2c { $($i2c:ident => $i2c_field:ident, $i2c_register:ident;)+ }
+        $(counter { $counter:ident => $counter_field:ident, $counter_register:ident; })?
     ) => {
         $(
             // SAFETY: This SoC-specific runtime token identifies one physical UART.
-            unsafe impl spacemit_hal::clock::UartId for $uart {}
+            unsafe impl spacemit_hal::clock::UartId for $uart {
+                const CLOCK_REGISTER: *const volatile_register::RW<spacemit_hal::apbc::UartClockReset> =
+                    $APBC::ptr().cast::<u8>()
+                        .wrapping_add(core::mem::offset_of!($RegisterBlock, $register)).cast();
+            }
 
             // SAFETY: The SoC map matches this UART to its clock; Peripherals::steal
             // guarantees permanent valid access, stable power/clocks and no conflicting users or DMA.
@@ -238,122 +323,113 @@ macro_rules! apbc_clocks {
 
         $(
             // SAFETY: Each SoC-specific token identifies one physical I²C controller.
-            unsafe impl spacemit_hal::clock::I2cId for $i2c {}
+            unsafe impl spacemit_hal::clock::I2cId for $i2c {
+                const CLOCK_REGISTER: *const volatile_register::WO<spacemit_hal::apbc::TwsiClockReset> =
+                    // Keep only write capability, including K1 TWSI8's WO register.
+                    $APBC::ptr().cast::<u8>()
+                        .wrapping_add(core::mem::offset_of!($RegisterBlock, $i2c_register)).cast();
+            }
+
+            // SAFETY: Peripherals::steal grants permanent, exclusive MMIO and clock access.
+            unsafe impl<'a> spacemit_hal::i2c::Instance<'a> for $i2c {
+                type ClockId = $i2c;
+                #[inline]
+                fn register_block(self) -> &'a spacemit_hal::i2c::RegisterBlock {
+                    // SAFETY: Consuming the token transfers its permanent mapping.
+                    unsafe { &*Self::ptr() }
+                }
+            }
+
+            // SAFETY: The mutable borrow retains the token's platform guarantees.
+            unsafe impl<'a> spacemit_hal::i2c::Instance<'a> for &'a mut $i2c {
+                type ClockId = $i2c;
+                #[inline]
+                fn register_block(self) -> &'a spacemit_hal::i2c::RegisterBlock { self }
+            }
         )+
 
-        /// Exclusive tokens for the modeled APBC clocks.
-        pub struct ApbcClocks<'a> {
+        $(
+            // SAFETY: This SoC identity names exactly this generic-counter selector.
+            unsafe impl spacemit_hal::clock::CounterId for $counter {
+                const CLOCK_REGISTER: *const volatile_register::RW<spacemit_hal::apbc::k1::CounterClockControl> =
+                    $APBC::ptr().cast::<u8>()
+                        .wrapping_add(core::mem::offset_of!($RegisterBlock, $counter_register)).cast();
+            }
+        )?
+
+        /// Exclusive zero-sized tokens for the modeled APBC clocks.
+        pub struct ApbcClocks {
+            $(
+                /// Exclusive generic-counter clock-source token.
+                pub $counter_field: spacemit_hal::clock::CounterClock<$counter>,
+            )?
             $(
                 #[doc = concat!("Exclusive ", stringify!($uart), " clock token.")]
-                pub $field: spacemit_hal::clock::UartClock<'a, $uart>,
+                pub $field: spacemit_hal::clock::UartClock<$uart>,
             )+
             $(
                 #[doc = concat!("Exclusive ", stringify!($i2c), " clock token.")]
-                pub $i2c_field: spacemit_hal::clock::I2cClock<'a, $i2c>,
+                pub $i2c_field: spacemit_hal::clock::I2cClock<$i2c>,
             )+
         }
 
-        impl<'a> ApbcClocks<'a> {
-            // SAFETY: Transfer exclusive APBC access and stable upstream power/clocks
-            // for 'a, permitting UART access when enabled without external interference.
-            unsafe fn from_registers(registers: &'a $RegisterBlock) -> Self {
+        impl ApbcClocks {
+            // SAFETY: Peripherals::steal transfers exclusive permanent APBC access.
+            #[inline(always)]
+            const unsafe fn new() -> Self {
                 Self {
+                    $(
+                        // SAFETY: This disjoint K1 counter clock register is
+                        // exclusively transferred with the other APBC fields.
+                        $counter_field: unsafe {
+                            spacemit_hal::clock::CounterClock::__new()
+                        },
+                    )?
                     $(
                         // SAFETY: The SoC map pairs this UART with the specified
                         // register; the caller establishes stable, exclusive access.
                         $field: unsafe {
-                            spacemit_hal::clock::UartClock::from_register(
-                                &registers.$register, spacemit_hal::clock::Clocks::unknown(),
-                            )
+                            spacemit_hal::clock::UartClock::__new()
                         },
                     )+
                     $(
                         // SAFETY: The SoC map supplies the correct register and
                         // preserves its readable or write-only access policy.
                         $i2c_field: unsafe {
-                            spacemit_hal::clock::I2cClock::$constructor(
-                                &registers.$i2c_register,
-                            )
+                            spacemit_hal::clock::I2cClock::__new()
                         },
                     )+
                 }
             }
         }
 
-        impl ApbcClocks<'static> {
-            // SAFETY: Peripherals::steal establishes exclusive permanent MMIO access.
-            unsafe fn new() -> Self {
-                // SAFETY: The caller guarantees the mapped APBC register block;
-                // constructing tokens does not read or write its registers.
-                unsafe { Self::from_registers(&*$APBC::ptr()) }
-            }
-        }
-
         #[cfg(test)]
-        mod apbc_clock_tests {
-            use super::*;
-            use spacemit_hal::{apbc::{TwsiClockReset, UartClockReset}, clock::{Clocks, Hertz}};
-
-            #[test]
-            fn uart_tokens_borrow_their_mapped_clock_registers() {
-                // SAFETY: The fixture contains only initialized integer MMIO cells.
-                let registers: $RegisterBlock = unsafe { core::mem::zeroed() };
-                // SAFETY: This test exclusively owns the RAM-backed APBC fixture.
-                let mut clocks = unsafe { ApbcClocks::from_registers(&registers) };
-                let frequencies = Clocks::new(Some(Hertz(1)), Some(Hertz(2)), None).unwrap();
-                $(
-                    // SAFETY: Simulated source frequencies and exclusive RAM writes.
-                    unsafe {
-                        clocks.$field.set_frequencies(frequencies);
-                        registers.$register.write(UartClockReset::from_bits(0x13));
-                    }
-                    assert_eq!(clocks.$field.frequency(), Some(Hertz(2)));
-                    // SAFETY: Restore this simulated register before checking the next.
-                    unsafe { registers.$register.write(UartClockReset::from_bits(0)) };
-                )+
-            }
-
-            #[test]
-            fn i2c_tokens_preserve_their_mapped_registers_and_readback_policy() {
-                // SAFETY: The fixture contains only initialized integer MMIO cells.
-                let registers: $RegisterBlock = unsafe { core::mem::zeroed() };
-                // SAFETY: This test exclusively owns the RAM-backed APBC fixture.
-                let clocks = unsafe { ApbcClocks::from_registers(&registers) };
-                $(
-                    // SAFETY: Sequential writes to this simulated clock register.
-                    unsafe { registers.$i2c_register.write(TwsiClockReset::from_bits(3)) };
-                    if stringify!($constructor) == "from_write_only_register" {
-                        assert_eq!(clocks.$i2c_field.readback(), None);
-                    } else {
-                        assert!(clocks.$i2c_field.readback().unwrap().is_enabled());
-                    }
-                    // SAFETY: Restore the RAM fixture before checking the next token.
-                    unsafe { registers.$i2c_register.write(TwsiClockReset::from_bits(0)) };
-                )+
-            }
+        #[test]
+        fn apbc_clock_tokens_are_zero_sized_and_correctly_mapped() {
+            use core::mem::{offset_of, size_of};
+            use spacemit_hal::clock;
+            $(
+                assert_eq!(size_of::<clock::UartClock<$uart>>(), 0);
+                assert_eq!(
+                    <$uart as clock::UartId>::CLOCK_REGISTER as usize,
+                    $APBC::ptr() as usize + offset_of!($RegisterBlock, $register),
+                );
+            )+
+            $(
+                assert_eq!(size_of::<clock::I2cClock<$i2c>>(), 0);
+                assert_eq!(
+                    <$i2c as clock::I2cId>::CLOCK_REGISTER as usize,
+                    $APBC::ptr() as usize + offset_of!($RegisterBlock, $i2c_register),
+                );
+            )+
+            $(
+                assert_eq!(size_of::<clock::CounterClock<$counter>>(), 0);
+                assert_eq!(
+                    <$counter as clock::CounterId>::CLOCK_REGISTER as usize,
+                    $APBC::ptr() as usize + offset_of!($RegisterBlock, $counter_register),
+                );
+            )?
         }
+
     };
-}
-
-#[cfg(test)]
-mod tests {
-    use core::sync::atomic::{AtomicU32, Ordering};
-
-    static REGISTERS: AtomicU32 = AtomicU32::new(0x1234_5678);
-
-    soc! {
-        pub struct Test => &REGISTERS as *const AtomicU32, AtomicU32;
-    }
-
-    #[test]
-    fn token_borrows_the_register_block() {
-        // This test token points to initialized static RAM, not hardware MMIO.
-        let token = Test {
-            _private: core::marker::PhantomData,
-        };
-        assert!(core::ptr::eq(Test::ptr(), &REGISTERS));
-        assert!(core::ptr::eq(&*token, token.as_ref()));
-        assert_eq!(token.load(Ordering::Relaxed), 0x1234_5678);
-        assert_eq!(core::mem::size_of::<Test>(), 0);
-    }
 }

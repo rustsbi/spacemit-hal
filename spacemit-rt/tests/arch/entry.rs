@@ -8,19 +8,12 @@ fn main() {}
 
 #[cfg(target_os = "none")]
 mod bare {
-    use core::{arch::naked_asm, panic::PanicInfo};
-    use spacemit_rt::{halt, start};
+    use core::panic::PanicInfo;
+    use spacemit_rt::{Peripherals, entry, halt, start};
 
     // Type-check both ends of the argument-free startup interface.
     const _: unsafe extern "C" fn() -> ! = start;
-    const _: extern "C" fn() = __spacemit_rt_main;
-
-    #[unsafe(no_mangle)]
-    #[unsafe(link_section = ".text.entry")]
-    #[unsafe(naked)]
-    unsafe extern "C" fn _start() -> ! {
-        naked_asm!("tail {start}", start = sym start);
-    }
+    const _: unsafe extern "C" fn() = boot;
 
     // Odd lengths exercise section-end padding for XLEN-wide initialization.
     #[unsafe(no_mangle)]
@@ -28,8 +21,14 @@ mod bare {
     #[unsafe(no_mangle)]
     static mut BSS: [u8; 5] = [0; 5];
 
-    #[unsafe(no_mangle)]
-    extern "C" fn __spacemit_rt_main() {
+    #[entry]
+    fn boot(p: Peripherals) {
+        core::hint::black_box(p);
+        #[cfg(feature = "k3-bootrom")]
+        core::hint::black_box((
+            spacemit_rt::arch::spacemit_a100::start as unsafe extern "C" fn() -> !,
+            spacemit_rt::arch::spacemit_x100::start as unsafe extern "C" fn() -> !,
+        ));
         // SAFETY: the startup contract initializes these exclusively owned statics.
         let state = unsafe {
             (

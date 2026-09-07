@@ -22,14 +22,40 @@ pub struct RegisterBlock {
 impl core::ops::Deref for RegisterBlock {
     type Target = uart16550::Uart16550<u32>;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.uart16550
     }
 }
 
 impl RegisterBlock {
+    #[inline]
+    pub(super) fn set_divisor(&self, divisor: u16) {
+        // uart16550 0.0.1 write_divisor uses non-volatile writes; use volatile aliases.
+        // SAFETY: Exclusive mapped UART access; IRQ/DMA are disabled by configure_polling.
+        unsafe {
+            let lcr = (self.lcr() as *const uart16550::LCR<u32>)
+                .cast::<u32>()
+                .cast_mut();
+            let dll = (self.rbr_thr() as *const uart16550::RBR_THR<u32>)
+                .cast::<u32>()
+                .cast_mut();
+            let dlh = (self.ier() as *const uart16550::IER<u32>)
+                .cast::<u32>()
+                .cast_mut();
+            let line = lcr.read_volatile();
+            lcr.write_volatile(line | (1 << 7));
+            riscv::asm::fence();
+            dll.write_volatile(u32::from(divisor & 0xff));
+            dlh.write_volatile(u32::from(divisor >> 8));
+            riscv::asm::fence();
+            lcr.write_volatile(line & !(1 << 7));
+            riscv::asm::fence();
+        }
+    }
     // The dependency's transparent UnsafeCell<u32> registers permit these
     // overlapping volatile views; extensions do not occupy additional addresses.
+    #[inline]
     pub(super) fn configure_polling(&self, line: uart16550::LineControl, parity: u32) {
         self.lcr().write(line);
         // SAFETY: Each pointer targets a live aligned UnsafeCell<u32> register.

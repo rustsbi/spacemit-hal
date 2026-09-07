@@ -12,20 +12,36 @@ pub struct ApplicationClockGate(u32);
 impl ApplicationClockGate {
     const PLL1_D78_ENABLE: u32 = 1 << 6;
     /// Creates a register value from raw bits.
+    #[inline]
     pub const fn from_bits(bits: u32) -> Self {
         Self(bits)
     }
     /// Returns the raw register bits.
+    #[inline]
     pub const fn bits(self) -> u32 {
         self.0
     }
     /// Returns whether the PLL1 / 78 output is enabled.
+    #[inline]
     pub const fn is_pll1_d78_enabled(self) -> bool {
         self.0 & Self::PLL1_D78_ENABLE != 0
     }
     /// Sets the PLL1 / 78 output gate in this value.
+    #[inline]
     pub const fn with_pll1_d78_enabled(self, enabled: bool) -> Self {
         Self((self.0 & !Self::PLL1_D78_ENABLE) | ((enabled as u32) << 6))
+    }
+
+    /// Returns whether the PLL1 * 3 / 128 UART source is enabled.
+    #[inline]
+    pub const fn is_pll1_m3d128_enabled(self) -> bool {
+        self.0 & (1 << 8) != 0
+    }
+
+    /// Sets the PLL1 * 3 / 128 UART source gate in this value.
+    #[inline]
+    pub const fn with_pll1_m3d128_enabled(self, enabled: bool) -> Self {
+        Self((self.0 & !(1 << 8)) | ((enabled as u32) << 8))
     }
 }
 

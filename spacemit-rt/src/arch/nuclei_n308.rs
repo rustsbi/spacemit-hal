@@ -7,12 +7,17 @@
 #[cfg(all(feature = "nuclei-n308", target_arch = "riscv32", target_os = "none"))]
 pub use super::riscv::halt;
 
-/// Initializes the current hart and enters `__spacemit_rt_main()`.
+/// Initializes this hart and runs its boot or spawned entry.
 ///
 /// # Safety
 /// The caller must satisfy the [machine-entry contract](super) and execute on
 /// the K1/M1 Nuclei N308 hart.
 #[cfg(all(feature = "nuclei-n308", target_arch = "riscv32", target_os = "none"))]
+#[cfg_attr(
+    feature = "k1-mcu",
+    unsafe(export_name = "_start"),
+    unsafe(link_section = ".text.entry")
+)]
 #[unsafe(naked)]
 pub unsafe extern "C" fn start() -> ! {
     core::arch::naked_asm!(
@@ -23,7 +28,7 @@ pub unsafe extern "C" fn start() -> ! {
         // Do not inherit MPRV from the loader.
         "li      t0, 0x20000
         csrc    mstatus, t0
-        call    {initialize_stack}",
+        csrr    tp, mhartid",
         // MCFG_INFO advertises optional I/D cache presence.
         "csrr    t0, 0xfc2
         andi    t1, t0, 0x200
@@ -48,6 +53,5 @@ pub unsafe extern "C" fn start() -> ! {
         .option pop",
         start_rust = sym super::riscv::start_rust,
         halt = sym halt,
-        initialize_stack = sym super::riscv::initialize_stack,
     );
 }

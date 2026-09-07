@@ -34,6 +34,7 @@ pub trait Pads<'a, I: UartId>: sealed::Sealed {
 }
 
 impl<'a, I: UartId, T: IntoTransmit<'a, I>, R: IntoReceive<'a, I>> Pads<'a, I> for (T, R) {
+    #[inline]
     fn into_uart_pads(self) -> (FlexPad<'a>, FlexPad<'a>) {
         (self.0.into_uart_transmit(), self.1.into_uart_receive())
     }

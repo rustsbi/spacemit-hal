@@ -8,12 +8,17 @@
 #[cfg(all(feature = "spacemit-rt24", target_arch = "riscv64", target_os = "none"))]
 pub use super::riscv::halt;
 
-/// Initializes the current hart and enters `__spacemit_rt_main()`.
+/// Initializes this hart and runs its boot or spawned entry.
 ///
 /// # Safety
 /// The caller must satisfy the [machine-entry contract](super) and execute on
 /// a K3 RT24 hart.
 #[cfg(all(feature = "spacemit-rt24", target_arch = "riscv64", target_os = "none"))]
+#[cfg_attr(
+    feature = "k3-mcu",
+    unsafe(export_name = "_start"),
+    unsafe(link_section = ".text.entry")
+)]
 #[unsafe(naked)]
 pub unsafe extern "C" fn start() -> ! {
     core::arch::naked_asm!(
@@ -24,7 +29,7 @@ pub unsafe extern "C" fn start() -> ! {
         // Do not inherit MPRV from the loader.
         "li      t0, 0x20000
         csrc    mstatus, t0
-        call    {initialize_stack}",
+        csrr    tp, mhartid",
         // This real-time core has floating-point state, but no vector extension.
         "li      t0, 0x6000
         csrs    mstatus, t0
@@ -35,6 +40,5 @@ pub unsafe extern "C" fn start() -> ! {
         .option pop",
         start_rust = sym super::riscv::start_rust,
         halt = sym halt,
-        initialize_stack = sym super::riscv::initialize_stack,
     );
 }

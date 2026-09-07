@@ -25,6 +25,7 @@ impl<'a> Output<'a> {
     {
         struct RestoreOutput<'b>(GpioInner<'b>, PinState);
         impl Drop for RestoreOutput<'_> {
+            #[inline]
             fn drop(&mut self) {
                 self.0.configure_output(self.1);
             }

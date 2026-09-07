@@ -1,7 +1,5 @@
 //! Shared RISC-V startup before entering Rust.
 
-use core::sync::atomic::AtomicU32;
-
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
         mod rv64;
@@ -12,84 +10,115 @@ cfg_if::cfg_if! {
     }
 }
 
-// The loader initializes this separate, writable, coherent section before any
-// hart enters; it must never be copied or cleared by the runtime itself.
-#[used]
-#[unsafe(link_section = ".data.boot_sync")]
-static BOOT_READY: AtomicU32 = AtomicU32::new(0);
+#[repr(C, align(16))]
+struct BootStack([core::mem::MaybeUninit<u8>; 2048]);
+
+// Only the boot hart uses this allocation; the linker excludes it from BSS.
+#[unsafe(link_section = ".uninit.boot_stack")]
+static mut BOOT_STACK: BootStack = BootStack([core::mem::MaybeUninit::uninit(); 2048]);
 
 unsafe extern "C" {
     fn __spacemit_rt_main();
 }
 
-// Called from naked assembly with interrupts masked and valid inherited vectors.
-// This helper returns through ra without reading or writing stack memory.
+// OpenSBI bus-cci.c / bus-cci-550.c: cluster N uses CCI slave interface N.
+// Configure this cluster before touching coherent RAM; spawn serializes releases.
+#[cfg(all(
+    target_arch = "riscv64",
+    any(
+        feature = "spacemit-x60",
+        feature = "spacemit-x100",
+        feature = "spacemit-a100"
+    )
+))]
 #[unsafe(naked)]
-pub(super) unsafe extern "C" fn initialize_stack() {
+pub(super) unsafe extern "C" fn initialize_coherency() {
     core::arch::naked_asm!(
-        ".option push
-        .option norelax
-        csrr    tp, mhartid
-        lui     t0, %hi(_max_hart_id)
-        addi    t0, t0, %lo(_max_hart_id)
-        bgtu    tp, t0, 2f
-        lui     t0, %hi(_hart_stack_size)
-        addi    t0, t0, %lo(_hart_stack_size)
-        mul     t0, tp, t0
-        lla     sp, _stack_start
-        sub     sp, sp, t0
-        andi    sp, sp, -16
-        lla     gp, __global_pointer$
+        "li      t0, 0xd8500000
+        srli    t1, tp, 2
+        addi    t1, t1, 1
+        slli    t1, t1, 12
+        add     t1, t0, t1
+        li      t2, 3
+        sw      t2, 0(t1)
+        fence   iorw, iorw
+    2:  lw      t1, 12(t0)
+        andi    t1, t1, 1
+        bnez    t1, 2b
+        fence   iorw, iorw
         ret",
-        // An out-of-range hart has no allocated stack and cannot safely proceed.
-        "2:  tail    {halt}
-        .option pop",
-        halt = sym halt,
     );
 }
 
-// Every caller has its own stack, gp, and tp, and completed its core setup.
-// Only the configured boot hart initializes shared memory; all harts enter Rust.
-// Keep ra in a 16-byte-aligned frame across both calls; stacks must be outside
-// the data/BSS initialization ranges. Restore it before returning to core startup.
+// Core setup has finished, tp holds mhartid, and no stack is required on entry.
+// Only the boot hart initializes memory; secondaries consume published stacks.
 #[unsafe(naked)]
 pub(super) unsafe extern "C" fn start_rust() {
     core::arch::naked_asm!(
         ".option push
         .option norelax
+        lla     gp, __global_pointer$
+        lui     t0, %hi(_boot_hart_id)
+        addi    t0, t0, %lo(_boot_hart_id)
+        bne     tp, t0, 3f
+        lla     sp, {boot_stack}
+        li      t0, {boot_stack_size}
+        add     sp, sp, t0
         addi    sp, sp, -16
         .if {register_bytes} == 8
         sd      ra, 0(sp)
         .else
         sw      ra, 0(sp)
         .endif
-        lui     t0, %hi(_boot_hart_id)
-        addi    t0, t0, %lo(_boot_hart_id)
-        bne     tp, t0, 8f
-        call    {init_data_bss}",
-        // Publish completed data/BSS initialization with release ordering.
-        "lla     t0, {boot_ready}
-        li      t1, 1
-        fence   rw, w
-        sw      t1, 0(t0)
-    8:  lla     t0, {boot_ready}
-    9:  lw      t1, 0(t0)
-        beqz    t1, 9b
-        fence   r, rw
+        call    {init_data_bss}
         fence.i
-        call    {}
+        call    {main}
+        j       5f
+    3:  li      t0, {hart_count}
+        bgeu    tp, t0, 6f
+        lla     t0, {mailboxes}
+        li      t1, {mailbox_size}
+        mul     t1, tp, t1
+        add     t0, t0, t1",
+        // Acquire the publication once, before the first access to this stack.
+        ".if {register_bytes} == 8
+        amoswap.d.aqrl sp, zero, (t0)
+        .else
+        amoswap.w.aqrl sp, zero, (t0)
+        .endif
+        beqz    sp, 6f
+        addi    sp, sp, -16
         .if {register_bytes} == 8
+        sd      ra, 0(sp)
+        ld      t1, {entry_offset}(t0)
+        ld      a0, {argument_offset}(t0)
+        .else
+        sw      ra, 0(sp)
+        lw      t1, {entry_offset}(t0)
+        lw      a0, {argument_offset}(t0)
+        .endif
+        fence.i
+        jalr    ra, t1, 0
+    5:  .if {register_bytes} == 8
         ld      ra, 0(sp)
         .else
         lw      ra, 0(sp)
         .endif
         addi    sp, sp, 16
         ret
+    6:  tail    {halt}
         .option pop",
-        sym __spacemit_rt_main,
         register_bytes = const core::mem::size_of::<usize>(),
-        boot_ready = sym BOOT_READY,
+        boot_stack = sym BOOT_STACK,
+        boot_stack_size = const core::mem::size_of::<BootStack>(),
+        hart_count = const crate::hart::MAILBOXES.len(),
+        mailboxes = sym crate::hart::MAILBOXES,
+        mailbox_size = const core::mem::size_of::<crate::hart::Mailbox>(),
+        entry_offset = const core::mem::offset_of!(crate::hart::Mailbox, entry),
+        argument_offset = const core::mem::offset_of!(crate::hart::Mailbox, argument),
         init_data_bss = sym init_data_bss,
+        main = sym __spacemit_rt_main,
+        halt = sym halt,
     );
 }
 

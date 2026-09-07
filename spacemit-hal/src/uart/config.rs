@@ -2,10 +2,10 @@
 
 pub use embedded_time::rate::Baud;
 
-/// UART configuration with a currently unapplied baud-rate request.
+/// UART frame and baud-rate configuration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Config {
-    /// Requested baud rate (TODO: divisor programming; currently ignored).
+    /// Requested baud rate, ignored only by raw BootROM adoption.
     pub baudrate: Baud,
     /// Number of data bits.
     pub wordlength: WordLength,
@@ -16,6 +16,7 @@ pub struct Config {
 }
 
 impl Default for Config {
+    #[inline]
     fn default() -> Self {
         Self {
             baudrate: Baud(115_200),

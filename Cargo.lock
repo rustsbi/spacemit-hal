@@ -185,6 +185,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "eeprom24x"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f7a31bca283ff29097bb5e7c0dbdb39fbe165dda33b825e19f8ac04f15a8eef"
+dependencies = [
+ "embedded-hal",
+ "embedded-storage",
+]
+
+[[package]]
 name = "embedded-hal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -195,6 +205,12 @@ name = "embedded-io"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9eb1aa714776b75c7e67e1da744b81a129b3ff919c8712b5e1b32252c1f07cc7"
+
+[[package]]
+name = "embedded-storage"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a21dea9854beb860f3062d10228ce9b976da520a73474aed3171ec276bc0c032"
 
 [[package]]
 name = "embedded-time"
@@ -287,6 +303,15 @@ version = "0.0.0"
 dependencies = [
  "libc",
  "spacemit-hal",
+]
+
+[[package]]
+name = "measurements"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f72b38901c571007811f0483e64a7e215ac9e6e3688e9f83705a717621d81513"
+dependencies = [
+ "libm",
 ]
 
 [[package]]
@@ -511,9 +536,26 @@ checksum = "d3f2ad9f15a07f4a0e1677124f9120ce7e83ab7e1ca7186af0ca9da529b62e80"
 name = "rot-bootloader"
 version = "0.0.0"
 dependencies = [
+ "eeprom24x",
+ "embedded-hal",
  "embedded-io",
+ "measurements",
+ "riscv",
+ "rot-bootloader-macros",
  "spacemit-hal",
+ "spacemit-p1",
  "spacemit-rt",
+ "spin",
+]
+
+[[package]]
+name = "rot-bootloader-macros"
+version = "0.0.0"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -591,9 +633,18 @@ dependencies = [
  "embedded-hal",
  "embedded-io",
  "embedded-time",
+ "riscv",
  "uart16550",
  "vcell",
  "volatile-register",
+]
+
+[[package]]
+name = "spacemit-p1"
+version = "0.0.0"
+dependencies = [
+ "embedded-hal",
+ "measurements",
 ]
 
 [[package]]
@@ -608,9 +659,11 @@ name = "spacemit-rt"
 version = "0.0.0"
 dependencies = [
  "cfg-if",
+ "riscv",
  "spacemit-hal",
  "spacemit-riscv",
  "spacemit-rt-macros",
+ "volatile-register",
 ]
 
 [[package]]

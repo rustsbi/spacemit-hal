@@ -31,6 +31,7 @@ pub unsafe trait ClockedInstance<'a>: Instance<'a> {
 }
 
 impl<'a> Instance<'a> for &'a RegisterBlock {
+    #[inline]
     fn register_block(self) -> &'a RegisterBlock {
         self
     }
