@@ -10,14 +10,8 @@ cfg_if::cfg_if! {
     }
 }
 
-#[repr(C, align(16))]
-struct BootStack([core::mem::MaybeUninit<u8>; 2048]);
-
-// Only the boot hart uses this allocation; the linker excludes it from BSS.
-#[unsafe(link_section = ".uninit.boot_stack")]
-static mut BOOT_STACK: BootStack = BootStack([core::mem::MaybeUninit::uninit(); 2048]);
-
 unsafe extern "C" {
+    static __sstack: u8;
     fn __spacemit_rt_main();
 }
 
@@ -62,8 +56,6 @@ pub(super) unsafe extern "C" fn start_rust() {
         addi    t0, t0, %lo(_boot_hart_id)
         bne     tp, t0, 3f
         lla     sp, {boot_stack}
-        li      t0, {boot_stack_size}
-        add     sp, sp, t0
         addi    sp, sp, -16
         .if {register_bytes} == 8
         sd      ra, 0(sp)
@@ -109,8 +101,7 @@ pub(super) unsafe extern "C" fn start_rust() {
     6:  tail    {halt}
         .option pop",
         register_bytes = const core::mem::size_of::<usize>(),
-        boot_stack = sym BOOT_STACK,
-        boot_stack_size = const core::mem::size_of::<BootStack>(),
+        boot_stack = sym __sstack,
         hart_count = const crate::hart::MAILBOXES.len(),
         mailboxes = sym crate::hart::MAILBOXES,
         mailbox_size = const core::mem::size_of::<crate::hart::Mailbox>(),

@@ -23,6 +23,8 @@ enum Command {
     /// Build a complete NOR image while preserving board-specific backup data.
     PackNor {
         #[arg(long)]
+        product_name: Option<String>,
+        #[arg(long)]
         backup: PathBuf,
         #[arg(long)]
         fsbl: PathBuf,
@@ -63,12 +65,20 @@ fn write_image(raw: &[u8], output: &std::path::Path) -> Result<()> {
 fn main() -> Result<()> {
     match Cli::parse().command {
         Command::PackNor {
+            product_name,
             backup,
             fsbl,
             sbi,
             payload,
             output,
-        } => nor::pack(&backup, &fsbl, sbi.as_deref(), payload.as_deref(), &output),
+        } => nor::pack(
+            &backup,
+            &fsbl,
+            sbi.as_deref(),
+            payload.as_deref(),
+            &output,
+            product_name.as_deref(),
+        ),
         Command::WrapFsbl { input, output } => {
             let raw = fs::read(&input).with_context(|| format!("read {}", input.display()))?;
             let output = output.unwrap_or_else(|| output_path(&input));

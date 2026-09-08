@@ -15,6 +15,7 @@ pub fn pack(
     sbi: Option<&Path>,
     payload: Option<&Path>,
     output: &Path,
+    product_name: Option<&str>,
 ) -> Result<()> {
     let read = |path: &Path| fs::read(path).with_context(|| format!("read {}", path.display()));
     let backup_bytes = read(backup)?;
@@ -26,6 +27,7 @@ pub fn pack(
         &fsbl_bytes,
         sbi_bytes.as_deref(),
         payload_bytes.as_deref(),
+        product_name,
     )?;
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -52,10 +54,11 @@ fn build(
     fsbl: &[u8],
     sbi: Option<&[u8]>,
     payload: Option<&[u8]>,
+    product_name: Option<&str>,
 ) -> Result<Vec<u8>> {
     ensure!(
         backup.len() == 0x800000,
-        "MUSE Card requires a complete 8-MiB NOR backup"
+        "MUSE boards require a complete 8-MiB NOR backup"
     );
     let mut output = backup.to_vec();
     let env = &output[ENV_OFFSET as usize..ENV_OFFSET as usize + ENV_MAX_SIZE];
@@ -84,9 +87,13 @@ fn build(
     if let Some(payload) = payload {
         replace(&mut output, layout.payload, payload)?;
     }
-    let images = image::inspect(fit(&output, layout.sbi)?, fit(&output, layout.payload)?)
-        .map_err(|e| anyhow!("FIT verification: {e:?}"))?
-        .destinations();
+    let images = image::inspect(
+        fit(&output, layout.sbi)?,
+        fit(&output, layout.payload)?,
+        product_name,
+    )
+    .map_err(|e| anyhow!("FIT verification: {e:?}"))?
+    .destinations();
     println!(
         "NOR layout: FSBL {:#x}+{:#x}, SBI {:#x}+{:#x}, next stage {:#x}+{:#x}",
         layout.fsbl.offset,
@@ -137,8 +144,10 @@ mod tests {
 
     #[test]
     fn rejects_incomplete_backup_and_invalid_environment() {
-        assert!(build(&[0; 80], &[0; 32], None, None).is_err());
-        assert!(build(&vec![0xff; 0x800000], &[0; 32], None, None).is_err());
+        for name in [None, Some("k1-x_MUSE-Card"), Some("k1-x_MUSE-Pi-Pro")] {
+            assert!(build(&[0; 80], &[0; 32], None, None, name).is_err());
+            assert!(build(&vec![0xff; 0x800000], &[0; 32], None, None, name).is_err());
+        }
         assert!(replace(&mut [0; 8], Partition { offset: 4, size: 4 }, &[0; 5]).is_err());
     }
 
@@ -165,7 +174,8 @@ mod tests {
     fn board_backup_preservation_and_rejection() {
         let backup = fs::read(std::env::var_os("SPACEMIT_NOR_BACKUP").unwrap()).unwrap();
         let fsbl = fs::read(std::env::var_os("SPACEMIT_FSBL").unwrap()).unwrap();
-        let output = build(&backup, &fsbl, None, None).unwrap();
+        let product_name = Some("k1-x_MUSE-Card");
+        let output = build(&backup, &fsbl, None, None, product_name).unwrap();
         assert_eq!(&output[..0x20000], &backup[..0x20000]);
         assert_eq!(&output[0x60000..], &backup[0x60000..]);
         assert_eq!(&output[0x20000..0x20000 + fsbl.len()], &fsbl);
@@ -177,10 +187,10 @@ mod tests {
         for offset in [0, 64, ENV_OFFSET as usize + 4, 0x70000, 0xf0000] {
             let mut corrupted = backup.clone();
             corrupted[offset] ^= 1;
-            assert!(build(&corrupted, &fsbl, None, None).is_err());
+            assert!(build(&corrupted, &fsbl, None, None, product_name).is_err());
         }
         let mut corrupted = fsbl.clone();
         corrupted[0x1000] ^= 1;
-        assert!(build(&backup, &corrupted, None, None).is_err());
+        assert!(build(&backup, &corrupted, None, None, product_name).is_err());
     }
 }

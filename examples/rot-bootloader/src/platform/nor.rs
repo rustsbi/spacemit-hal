@@ -1,6 +1,6 @@
 use super::Board;
 use crate::image::{self, LoadedImages};
-use core::{mem::MaybeUninit, ptr};
+use core::ptr;
 use embedded_hal::delay::DelayNs;
 use qspi_nor::{NorFlash, ReadNorFlash};
 use spacemit_hal::{clock::Hertz, counter::CounterDelay, qspi};
@@ -28,20 +28,25 @@ impl Board {
     ///
     /// Reserve DRAM 0..128 MiB; stop all DMA, QSPI IRQ, AHB/XIP and other firmware users.
     ///
-    /// The linker-reserved DDR stack must be idle until this call returns.
-    pub unsafe fn load_images(&mut self) -> Result<LoadedImages, image::Error> {
-        let bottom = ptr::addr_of!(__ddr_stack_bottom) as usize;
-        let mut result = MaybeUninit::uninit();
-        // SAFETY: Training returned; reuse its 24 KiB stack without touching the boot stack.
+    /// The application stack and its linker-reserved guard must remain exclusive.
+    pub unsafe fn load_images(
+        &mut self,
+        product_name: Option<&str>,
+    ) -> Result<LoadedImages, image::Error> {
+        let bottom = ptr::addr_of!(__stack_guard) as usize;
+        // SAFETY: The guard lies below the live application stack; DRAM is trained and unused.
         unsafe {
             ptr::write_bytes(bottom as *mut u8, 0xa5, 256);
-            on_stack(self, &mut result, read_images);
+            let result = self.read_images(product_name);
             image::check_stack_guard(bottom)?;
-            result.assume_init()
+            result
         }
     }
 
-    unsafe fn read_images(&mut self) -> Result<LoadedImages, image::Error> {
+    unsafe fn read_images(
+        &mut self,
+        product_name: Option<&str>,
+    ) -> Result<LoadedImages, image::Error> {
         let frequency = self
             .clocks
             .qspi_source()
@@ -59,60 +64,12 @@ impl Board {
             capacity
         );
         // SAFETY: The caller reserves trained DRAM for staging and validated payload writes.
-        unsafe { image::load(&mut flash) }
+        unsafe { image::load(&mut flash, product_name) }
     }
 }
 
 unsafe extern "C" {
-    static __ddr_stack_bottom: u8;
-    static __ddr_stack_top: u8;
-}
-
-type LoadEntry =
-    unsafe extern "C" fn(&mut Board, &mut MaybeUninit<Result<LoadedImages, image::Error>>);
-
-// A C-ABI frame retains the caller's stack while FIT parsing uses the idle DDR stack.
-#[cfg(target_arch = "riscv64")]
-#[unsafe(naked)]
-unsafe extern "C" fn on_stack(
-    _board: &mut Board,
-    _result: &mut MaybeUninit<Result<LoadedImages, image::Error>>,
-    _entry: LoadEntry,
-) {
-    core::arch::naked_asm!(
-        ".option push
-        .option norelax
-        addi    sp, sp, -16
-        sd      ra, 0(sp)
-        sd      s0, 8(sp)
-        mv      s0, sp
-        lla     sp, {stack}
-        jalr    ra, a2, 0
-        mv      sp, s0
-        ld      ra, 0(sp)
-        ld      s0, 8(sp)
-        addi    sp, sp, 16
-        ret
-        .option pop",
-        stack = sym __ddr_stack_top,
-    );
-}
-
-#[cfg(not(target_arch = "riscv64"))]
-unsafe extern "C" fn on_stack(
-    _: &mut Board,
-    _: &mut MaybeUninit<Result<LoadedImages, image::Error>>,
-    _: LoadEntry,
-) {
-    unimplemented!("the MUSE Card loader requires RV64 M-mode");
-}
-
-unsafe extern "C" fn read_images(
-    board: &mut Board,
-    result: &mut MaybeUninit<Result<LoadedImages, image::Error>>,
-) {
-    // SAFETY: on_stack inherits the board's exclusive DRAM and QSPI access.
-    result.write(unsafe { board.read_images() });
+    static __stack_guard: u8;
 }
 
 impl Nor {

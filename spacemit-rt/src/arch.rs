@@ -10,8 +10,8 @@
 //! Only `_boot_hart_id` may enter initially;
 //! all other harts stay powered off until `Hart::spawn` publishes their state.
 //!
-//! Place `.uninit.boot_stack` in writable RAM outside data/BSS; it holds the
-//! single 2 KiB boot stack.
+//! Reserve the boot stack in writable RAM outside data/BSS, with its
+//! 16-byte-aligned upper boundary named `__sstack`.
 //!
 //! Application cores require accessible CCI registers, shareable RAM and valid
 //! reset cache state; retain coherent mappings thereafter.

@@ -33,7 +33,10 @@ Build a complete NOR image from a verified, board-specific 8-MiB backup:
 
 ```powershell
 cargo xtask pack-nor --backup original-nor.bin --fsbl FSBL.bin --output nor.bin
+cargo xtask pack-nor --product-name k1-x_MUSE-Pi-Pro --backup pi-pro-nor.bin --fsbl FSBL.bin --output pi-pro-nor-new.bin
 ```
+
+`--product-name` selects the vendor FIT configuration; omission uses its default.
 
 Only the FSBL slot (`0x20000..0x60000`) changes by default; bootinfo, private data,
 environment and later images are preserved. Optional `--sbi` and `--payload`

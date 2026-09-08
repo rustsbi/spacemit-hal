@@ -23,7 +23,7 @@ fn main(mut b: Board) {
     rot_bootloader::io::print_eeprom(&info);
 
     println!("DDR: LPDDR4X, 2 CS, 2400 MT/s; training...");
-    // SAFETY: Cold MUSE Card M1 boot; no payload, DMA or secondary hart uses DRAM.
+    // SAFETY: Cold MUSE boot; no payload, DMA or secondary hart uses DRAM.
     let firmware_status = match unsafe { b.init_ddr(info.ddr.as_ref()) } {
         Ok(status) => status,
         Err(error) => {
@@ -34,7 +34,7 @@ fn main(mut b: Board) {
     println!("DDR firmware returned: {}", firmware_status);
     println!("NOR: loading SBI firmware, next stage and DTB...");
     // SAFETY: Training succeeded; DRAM is unused and all other harts and DMA remain stopped.
-    match unsafe { b.load_images() } {
+    match unsafe { b.load_images(info.product_name) } {
         Ok(images) => {
             println!(
                 "Loaded: SBI {} bytes, next stage {} bytes, DTB {} bytes",

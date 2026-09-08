@@ -18,8 +18,7 @@ static mut FIRMWARE: [u8; 36_248] =
 unsafe extern "C" {
     static __ddr_info: u8;
     static __ddr_fw_end: u8;
-    static __ddr_stack_bottom: u8;
-    static __ddr_stack_top: u8;
+    static __stack_guard: u8;
 }
 
 const DRAM_START: usize = 0x0080_0000;
@@ -37,7 +36,7 @@ pub(crate) struct Config {
 pub enum Error {
     /// EEPROM parameters differ from the supported board configuration.
     Config,
-    /// Training exhausted its reserved stack guard.
+    /// Training exhausted the application stack guard.
     Stack,
     /// A physical memory read did not match its test pattern.
     Memory {
@@ -49,15 +48,14 @@ pub enum Error {
 
 // SAFETY contract is inherited from Board::init_ddr; no DRAM objects exist yet.
 pub(crate) unsafe fn init(config: &Config) -> Result<i32, Error> {
-    // SAFETY: The caller reserves the firmware's SRAM and private stack.
+    // SAFETY: The caller reserves the firmware's SRAM and the stack guard.
     unsafe { prepare_training() };
-    let bottom = ptr::addr_of!(__ddr_stack_bottom) as usize;
-    let top = ptr::addr_of!(__ddr_stack_top) as usize;
+    let bottom = ptr::addr_of!(__stack_guard) as usize;
     // SAFETY: Fixed, hash-checked C ABI; clocks and rails are ready on the boot hart.
     let firmware_status =
         unsafe { train(0xc000_0000, config.chip_selects, config.data_rate, puts) };
-    // SAFETY: Training has returned; its private stack has no remaining users.
-    unsafe { flush(bottom, top) };
+    // SAFETY: The guard consists of four reserved cache lines below the live stack.
+    unsafe { flush(bottom, bottom + 256) };
     for offset in 0..256 {
         // SAFETY: This byte lies in the initialized, exclusively reserved stack.
         if unsafe { ptr::read_volatile((bottom + offset) as *const u8) } != STACK_PATTERN {
@@ -99,20 +97,18 @@ unsafe fn prepare_training() {
     let firmware = ptr::addr_of!(FIRMWARE) as usize;
     let tail = firmware + core::mem::size_of::<[u8; 36_248]>();
     let workspace_end = ptr::addr_of!(__ddr_fw_end) as usize;
-    let bottom = ptr::addr_of!(__ddr_stack_bottom) as usize;
-    let top = ptr::addr_of!(__ddr_stack_top) as usize;
-    // SAFETY: link.x keeps the firmware tail and private stack outside all live sections.
+    let bottom = ptr::addr_of!(__stack_guard) as usize;
+    // SAFETY: Both regions are reserved by link.x; never fill the live application stack.
     unsafe {
         ptr::write_bytes(tail as *mut u8, 0, workspace_end - tail);
-        ptr::write_bytes(bottom as *mut u8, STACK_PATTERN, top - bottom);
+        ptr::write_bytes(bottom as *mut u8, STACK_PATTERN, 256);
         flush(firmware, workspace_end);
-        flush(bottom, top);
+        flush(bottom, bottom + 256);
     }
     riscv::asm::fence_i();
 }
 
-// The blob uses the C integer ABI; save the caller's stack, gp and tp across it.
-// s0 is callee-saved, so it can retain the old frame while sp uses DDR_STACK.
+// The blob uses the application stack and C integer ABI; preserve gp and tp.
 #[unsafe(naked)]
 unsafe extern "C" fn train(
     _controller: u64,
@@ -125,22 +121,16 @@ unsafe extern "C" fn train(
         .option norelax
         addi    sp, sp, -32
         sd      ra, 0(sp)
-        sd      s0, 8(sp)
-        sd      gp, 16(sp)
-        sd      tp, 24(sp)
-        mv      s0, sp
-        lla     sp, {stack_top}
+        sd      gp, 8(sp)
+        sd      tp, 16(sp)
         lla     t0, {firmware}
         jalr    ra, t0, 0
-        mv      sp, s0
         ld      ra, 0(sp)
-        ld      s0, 8(sp)
-        ld      gp, 16(sp)
-        ld      tp, 24(sp)
+        ld      gp, 8(sp)
+        ld      tp, 16(sp)
         addi    sp, sp, 32
         ret
         .option pop",
-        stack_top = sym __ddr_stack_top,
         firmware = sym FIRMWARE,
     );
 }

@@ -1,6 +1,6 @@
 # rot-bootloader
 
-The board entry reuses `spacemit-rt` startup and initializes MUSE Card M1 devices:
+The board entry reuses `spacemit-rt` startup and initializes MUSE Card M1 or MUSE Pi Pro devices:
 
 ```rust
 use rot_bootloader::{Board, entry, println};
@@ -36,6 +36,12 @@ git submodule update --init --recursive
 cargo run -p rot-bootloader --release --target riscv64imac-unknown-none-elf
 ```
 
+Connect in BootROM download mode; the runner downloads to RAM, never writes flash.
+UART0 uses 115200 8N1. Both boards share UART, EEPROM, PMIC, DDR and QSPI setup in
+`platform/mod.rs`; `main` passes the EEPROM product name to `load_images` to select
+the vendor FIT configuration, or its default when the product name is absent.
+NOR partition offsets come from its CRC-checked environment.
+
 Retain `DDR-FIRMWARE-LICENSE` when distributing the resulting image.
 The default binary trains DDR and destructively checks unused DRAM; `hello-world`
 and `eeprom-info` do not call DDR initialization.
@@ -57,9 +63,10 @@ its trailing workspace up to BSS is zeroed before training. The linker rejects
 resident code/data that would overlap it; with DDR present this leaves 176 KiB
 for resident sections, independent of the larger raw-image limit.
 
-This runtime retains separate 2 KiB boot and 24 KiB DDR stacks within the vendor
-BSS-to-stack-top interval; these subdivisions are project choices, not vendor
-stack-size specifications. Fixed placement makes the packed image larger because
+Boot, DDR training and FIT loading share a 28 KiB SRAM stack at
+`0xc0839000..0xc0840000`, including a 256-byte guard below the usable stack.
+`__sstack` is its initial stack pointer; training never clears the live stack.
+Fixed placement makes the packed image larger because
 it contains the address gap, but removes the duplicate 36,248-byte firmware copy.
 
 Build without DDR firmware:
@@ -67,3 +74,5 @@ Build without DDR firmware:
 ```
 cargo build -p rot-bootloader --release --target riscv64imac-unknown-none-elf --no-default-features --features spacemit-rt/k1-bootrom --bin hello-world
 ```
+
+Use `--bin eeprom-info` to read the EEPROM without training DDR.

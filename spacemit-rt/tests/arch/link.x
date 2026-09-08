@@ -28,11 +28,10 @@ SECTIONS
         . = ALIGN(8);
         __ebss = .;
     }
-    .stack (NOLOAD) :
+    .stack (NOLOAD) : ALIGN(16)
     {
-        . = ALIGN(16);
         __estack = .;
-        KEEP(*(.uninit.boot_stack))
+        . += 2048;
         __sstack = .;
     }
 

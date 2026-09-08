@@ -143,6 +143,10 @@ mod tests {
         let info = elf.section_by_name(".ddr_info").unwrap();
         assert_eq!((info.address(), info.size()), (0xc0800000, 1536));
         assert_eq!(info.kind(), SectionKind::UninitializedData);
+        let stack = elf.section_by_name(".stack").unwrap();
+        assert_eq!((stack.address(), stack.size()), (0xc0839000, 0x7000));
+        assert_eq!(stack.kind(), SectionKind::UninitializedData);
+        assert!(elf.section_by_name(".ddr_stack").is_none());
         let raw = convert(&bytes).unwrap();
         let blob = std::fs::read(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

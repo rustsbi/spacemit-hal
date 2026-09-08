@@ -40,7 +40,7 @@ pub enum Error {
     Integrity,
     /// DRAM readback differs from the verified image.
     Readback,
-    /// Image loading exhausted its reserved stack guard.
+    /// Image loading exhausted the application stack guard.
     Stack,
 }
 
@@ -119,8 +119,12 @@ impl Images<'_> {
     }
 }
 
-/// Validates embedded, uncompressed vendor FIT images for MUSE Card M1.
-pub fn inspect<'a>(sbi: &'a [u8], payload: &'a [u8]) -> Result<Images<'a>> {
+/// Validates vendor FIT images using the EEPROM product or FIT default.
+pub fn inspect<'a>(
+    sbi: &'a [u8],
+    payload: &'a [u8],
+    product_name: Option<&str>,
+) -> Result<Images<'a>> {
     if sbi.len() > SBI_LIMIT || payload.len() > PAYLOAD_LIMIT {
         return Err(Error::Bounds);
     }
@@ -140,16 +144,21 @@ pub fn inspect<'a>(sbi: &'a [u8], payload: &'a [u8]) -> Result<Images<'a>> {
     check_entry(&sbi)?;
 
     let root = Fdt::root(payload)?;
-    let mut selected = None;
-    for node in root.child("configurations")?.children() {
-        let node = node?;
-        if node.property("description")?.map(text).transpose()? == Some("k1-x_MUSE-Card")
-            && selected.replace(node).is_some()
-        {
-            return Err(Error::Format);
+    let configurations = root.child("configurations")?;
+    let configuration = if let Some(product_name) = product_name {
+        let mut selected = None;
+        for node in configurations.children() {
+            let node = node?;
+            if node.property("description")?.map(text).transpose()? == Some(product_name)
+                && selected.replace(node).is_some()
+            {
+                return Err(Error::Format);
+            }
         }
-    }
-    let configuration = selected.ok_or(Error::Missing)?;
+        selected.ok_or(Error::Missing)?
+    } else {
+        configurations.child(text(configurations.required("default")?)?)?
+    };
     let images = root.child("images")?;
     let payload_node = images.child(text(configuration.required("loadables")?)?)?;
     check(payload_node, "type", "standalone")?;
@@ -176,11 +185,7 @@ pub fn inspect<'a>(sbi: &'a [u8], payload: &'a [u8]) -> Result<Images<'a>> {
     {
         return Err(Error::Bounds);
     }
-    check(
-        Fdt::root(dtb.data)?,
-        "model",
-        "spacemit k1-x MUSE-Card board",
-    )?;
+    Fdt::root(dtb.data)?;
     let segments = [sbi.destination, payload.destination, dtb.destination];
     for (index, first) in segments.iter().enumerate() {
         for second in &segments[index + 1..] {
@@ -256,6 +261,7 @@ fn read_image(node: Node<'_>, fallback: Option<usize>) -> Result<Image<'_>> {
 // Caller reserves trained DRAM 0..128 MiB and excludes all external users.
 pub(crate) unsafe fn load(
     flash: &mut impl ReadNorFlash<Error = qspi_nor::Error<spacemit_hal::qspi::Error>>,
+    product_name: Option<&str>,
 ) -> Result<LoadedImages> {
     // SAFETY: Staging is disjoint from validated destinations and all SRAM allocations.
     let staging = unsafe {
@@ -287,7 +293,7 @@ pub(crate) unsafe fn load(
         layout.payload.offset,
         &mut payload[..PAYLOAD_LIMIT.min(layout.payload.size as usize)],
     )?;
-    let images = inspect(sbi, payload)?;
+    let images = inspect(sbi, payload, product_name)?;
     for image in [&images.sbi, &images.payload, &images.dtb] {
         // SAFETY: All destinations were bounded, checked for overlap and verified before any copy.
         unsafe { memory::copy(image.destination.address, image.data)? };
