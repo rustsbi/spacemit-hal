@@ -1,5 +1,6 @@
-//! Shared MUSE board initialization.
+//! Shared K1/M1 board initialization.
 
+pub mod bpi_f3_k1;
 pub mod muse_card_m1;
 pub mod muse_pi_pro_m1;
 
@@ -33,7 +34,7 @@ const CLOCK_CONFIG: Strict = {
     }
 };
 
-// Both boards use k1-x_spm8821.dtsi and pinctrl_i2c2_0 / pinctrl_uart0_2.
+// These boards use k1-x_spm8821.dtsi and pinctrl_i2c2_0 / pinctrl_uart0_2.
 // BUCK1: 500 mV + 0x6e * 5 mV = 1.05 V; BUCK3 retains its existing voltage.
 
 /// Supported board devices backed by the entry's permanent peripheral storage.

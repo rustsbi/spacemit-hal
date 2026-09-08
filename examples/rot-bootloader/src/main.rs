@@ -23,7 +23,7 @@ fn main(mut b: Board) {
     rot_bootloader::io::print_eeprom(&info);
 
     println!("DDR: LPDDR4X, 2 CS, 2400 MT/s; training...");
-    // SAFETY: Cold MUSE boot; no payload, DMA or secondary hart uses DRAM.
+    // SAFETY: Cold K1/M1 boot; no payload, DMA or secondary hart uses DRAM.
     let firmware_status = match unsafe { b.init_ddr(info.ddr.as_ref()) } {
         Ok(status) => status,
         Err(error) => {

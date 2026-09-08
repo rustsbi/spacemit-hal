@@ -1,6 +1,15 @@
 # rot-bootloader
 
-The board entry reuses `spacemit-rt` startup and initializes MUSE Card M1 or MUSE Pi Pro devices:
+| Board | SoC | `rot-bootloader` validation |
+| --- | --- | --- |
+| MUSE Card | M1 | Tested: UART, EEPROM, PMIC, 8 GiB DDR, NOR, SBI and U-Boot |
+| MUSE Pi Pro | M1 | Tested: UART, EEPROM, PMIC, 16 GiB DDR, NOR, SBI and U-Boot |
+| Banana Pi BPI-F3 | K1 | Tested: UART, EEPROM, PMIC, 4 GiB DDR, NOR, SBI and U-Boot |
+| MUSE Pi | K1 | Not adapted or tested |
+| K3 Pico-ITX | K3 | Bootloader not adapted or tested; Linux GPIO reads tested |
+| K3 CoM260 | K3 | Not adapted or tested |
+
+The board entry reuses `spacemit-rt` startup for MUSE Card M1, MUSE Pi Pro M1 and BPI-F3 K1:
 
 ```rust
 use rot_bootloader::{Board, entry, println};
@@ -37,10 +46,12 @@ cargo run -p rot-bootloader --release --target riscv64imac-unknown-none-elf
 ```
 
 Connect in BootROM download mode; the runner downloads to RAM, never writes flash.
-UART0 uses 115200 8N1. Both boards share UART, EEPROM, PMIC, DDR and QSPI setup in
+UART0 uses 115200 8N1. These boards share UART, EEPROM, PMIC, DDR and QSPI setup in
 `platform/mod.rs`; `main` passes the EEPROM product name to `load_images` to select
 the vendor FIT configuration, or its default when the product name is absent.
 NOR partition offsets come from its CRC-checked environment.
+
+The tested BPI-F3 EEPROM has no product name; its NOR FIT defaults to `k1-x_deb1`.
 
 Retain `DDR-FIRMWARE-LICENSE` when distributing the resulting image.
 The default binary trains DDR and destructively checks unused DRAM; `hello-world`
