@@ -1,6 +1,6 @@
 //! K3 PLL register layout.
 
-use volatile_register::RW;
+use volatile_register::{RO, RW};
 
 // Offsets: include/soc/spacemit/k3-syscon.h; extent: k3.dtsi.
 // https://github.com/torvalds/linux/blob/master/include/soc/spacemit/k3-syscon.h
@@ -8,6 +8,7 @@ use volatile_register::RW;
 // Gates: https://github.com/torvalds/linux/blob/master/drivers/clk/spacemit/ccu-k3.c
 // Fields: K3 User Manual, Clock & Reset, APB_SPARE2_REG.
 // https://github.com/spacemit-com/docs-chip/blob/main/en/key_stone/k3/k3_docs/k3_usermanual/17_clock_reset.md
+// PHY calibration: https://github.com/spacemit-com/docs-chip/blob/main/en/key_stone/k3/k3_docs/k3_usermanual/14_connectivity/usb.md
 
 /// K3 PLL registers.
 #[repr(C)]
@@ -15,7 +16,12 @@ pub struct RegisterBlock {
     _reserved_0x000: [u32; 65],
     /// PLL1 software control 2.
     pub pll1_software_control2: RW<Pll1SoftwareControl2>,
-    _reserved_0x108: [u32; 16318],
+    _padding_0x108: [u32; 28],
+    /// USB3/PCIe PHY calibration control.
+    pub phy_calibration_control: RW<u32>,
+    /// USB3/PCIe PHY calibration status.
+    pub phy_calibration_status: RO<u32>,
+    _padding_0x180: [u32; 16288],
 }
 
 /// K3 PLL1 configuration and output clock gates.
@@ -337,6 +343,8 @@ mod tests {
     #[test]
     fn register_block_layout() {
         assert_eq!(offset_of!(RegisterBlock, pll1_software_control2), 0x104);
+        assert_eq!(offset_of!(RegisterBlock, phy_calibration_control), 0x178);
+        assert_eq!(offset_of!(RegisterBlock, phy_calibration_status), 0x17c);
         assert_eq!(size_of::<RegisterBlock>(), 0x10000);
         assert_eq!(align_of::<RegisterBlock>(), 4);
     }

@@ -1,11 +1,16 @@
 //! K1/M1 peripheral ownership and addresses.
 
-use spacemit_hal::{apbc, apbs, apmu, ciu, counter, gpio, i2c, mfpr, mpmu, qspi, uart};
+use spacemit_hal::{
+    apbc, apbs, apmu, ciu, counter, gpio, i2c, mfpr, mpmu, pdma, pwm, qspi, sdh, spi, timer, uart,
+};
 
 // Address map: Linux k1.dtsi and the vendor k1-x.dtsi (UART1 and R_UART0/1).
 // https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k1.dtsi
 // https://gitee.com/spacemit-buildroot/linux-6.6/blob/k1-bl-v2.2.y/arch/riscv/boot/dts/spacemit/k1-x.dtsi
 // UART1 is in the secure domain; R_UART1 is at 0xc088_d000, unlike K3.
+// Additional instances: K1 user manual, section 6.2.
+// https://github.com/spacemit-com/docs-chip/blob/main/en/key_stone/k1/k1_docs/k1_usermanual/6.Address_Mapping.md
+// SDH0..2 are zero-based software IDs (SDH1..3 in the manual).
 
 soc! {
     /// I2C0 (TWSI0) peripheral.
@@ -66,6 +71,69 @@ soc! {
     pub struct R_UART0 => 0xc088_1000, uart::RegisterBlock;
     /// Real-time-domain UART1 peripheral.
     pub struct R_UART1 => 0xc088_d000, uart::RegisterBlock;
+
+    /// Secure I2C3 (TWSI3) peripheral.
+    pub struct I2C3 => 0xf061_4000, i2c::RegisterBlock;
+    /// PWM0 peripheral.
+    pub struct PWM0 => 0xd401_a000, pwm::k1::RegisterBlock;
+    /// PWM1 peripheral.
+    pub struct PWM1 => 0xd401_a400, pwm::k1::RegisterBlock;
+    /// PWM2 peripheral.
+    pub struct PWM2 => 0xd401_a800, pwm::k1::RegisterBlock;
+    /// PWM3 peripheral.
+    pub struct PWM3 => 0xd401_ac00, pwm::k1::RegisterBlock;
+    /// PWM4 peripheral.
+    pub struct PWM4 => 0xd401_b000, pwm::k1::RegisterBlock;
+    /// PWM5 peripheral.
+    pub struct PWM5 => 0xd401_b400, pwm::k1::RegisterBlock;
+    /// PWM6 peripheral.
+    pub struct PWM6 => 0xd401_b800, pwm::k1::RegisterBlock;
+    /// PWM7 peripheral.
+    pub struct PWM7 => 0xd401_bc00, pwm::k1::RegisterBlock;
+    /// PWM8 peripheral.
+    pub struct PWM8 => 0xd402_0000, pwm::k1::RegisterBlock;
+    /// PWM9 peripheral.
+    pub struct PWM9 => 0xd402_0400, pwm::k1::RegisterBlock;
+    /// PWM10 peripheral.
+    pub struct PWM10 => 0xd402_0800, pwm::k1::RegisterBlock;
+    /// PWM11 peripheral.
+    pub struct PWM11 => 0xd402_0c00, pwm::k1::RegisterBlock;
+    /// PWM12 peripheral.
+    pub struct PWM12 => 0xd402_1000, pwm::k1::RegisterBlock;
+    /// PWM13 peripheral.
+    pub struct PWM13 => 0xd402_1400, pwm::k1::RegisterBlock;
+    /// PWM14 peripheral.
+    pub struct PWM14 => 0xd402_1800, pwm::k1::RegisterBlock;
+    /// PWM15 peripheral.
+    pub struct PWM15 => 0xd402_1c00, pwm::k1::RegisterBlock;
+    /// PWM16 peripheral.
+    pub struct PWM16 => 0xd402_2000, pwm::k1::RegisterBlock;
+    /// PWM17 peripheral.
+    pub struct PWM17 => 0xd402_2400, pwm::k1::RegisterBlock;
+    /// PWM18 peripheral.
+    pub struct PWM18 => 0xd402_2800, pwm::k1::RegisterBlock;
+    /// PWM19 peripheral.
+    pub struct PWM19 => 0xd402_2c00, pwm::k1::RegisterBlock;
+    /// Secure SSP2 / SPI peripheral.
+    pub struct SPI2 => 0xf061_3000, spi::k1::RegisterBlock;
+    /// SSP3 / SPI peripheral.
+    pub struct SPI3 => 0xd401_c000, spi::k1::RegisterBlock;
+    /// Full-duplex I2S0 peripheral.
+    pub struct I2S0 => 0xd402_6000, spi::k1::RegisterBlock;
+    /// Full-duplex I2S1 peripheral.
+    pub struct I2S1 => 0xd402_6800, spi::k1::RegisterBlock;
+    /// SD / SDIO / eMMC host 0.
+    pub struct SDH0 => 0xd428_0000, sdh::k1::RegisterBlock;
+    /// SD / SDIO / eMMC host 1.
+    pub struct SDH1 => 0xd428_0800, sdh::k1::RegisterBlock;
+    /// SD / SDIO / eMMC host 2.
+    pub struct SDH2 => 0xd428_1000, sdh::k1::RegisterBlock;
+    /// Timer 1 and watchdog peripheral.
+    pub struct TIMER1 => 0xd401_4000, timer::k1::RegisterBlock;
+    /// Timer 2 and watchdog peripheral.
+    pub struct TIMER2 => 0xd401_6000, timer::k1::RegisterBlock;
+    /// Non-secure peripheral DMA controller.
+    pub struct PDMA => 0xd400_0000, pdma::k1::RegisterBlock;
 }
 
 impl_clock_controller!(apbs, APBS, apbs::k1::RegisterBlock);
@@ -304,6 +372,68 @@ pub struct Peripherals {
     pub r_uart0: R_UART0,
     /// Real-time-domain UART1 peripheral.
     pub r_uart1: R_UART1,
+    /// Secure I2C3 (TWSI3) peripheral.
+    pub i2c3: I2C3,
+    /// PWM0 peripheral.
+    pub pwm0: PWM0,
+    /// PWM1 peripheral.
+    pub pwm1: PWM1,
+    /// PWM2 peripheral.
+    pub pwm2: PWM2,
+    /// PWM3 peripheral.
+    pub pwm3: PWM3,
+    /// PWM4 peripheral.
+    pub pwm4: PWM4,
+    /// PWM5 peripheral.
+    pub pwm5: PWM5,
+    /// PWM6 peripheral.
+    pub pwm6: PWM6,
+    /// PWM7 peripheral.
+    pub pwm7: PWM7,
+    /// PWM8 peripheral.
+    pub pwm8: PWM8,
+    /// PWM9 peripheral.
+    pub pwm9: PWM9,
+    /// PWM10 peripheral.
+    pub pwm10: PWM10,
+    /// PWM11 peripheral.
+    pub pwm11: PWM11,
+    /// PWM12 peripheral.
+    pub pwm12: PWM12,
+    /// PWM13 peripheral.
+    pub pwm13: PWM13,
+    /// PWM14 peripheral.
+    pub pwm14: PWM14,
+    /// PWM15 peripheral.
+    pub pwm15: PWM15,
+    /// PWM16 peripheral.
+    pub pwm16: PWM16,
+    /// PWM17 peripheral.
+    pub pwm17: PWM17,
+    /// PWM18 peripheral.
+    pub pwm18: PWM18,
+    /// PWM19 peripheral.
+    pub pwm19: PWM19,
+    /// Secure SSP2 / SPI peripheral.
+    pub spi2: SPI2,
+    /// SSP3 / SPI peripheral.
+    pub spi3: SPI3,
+    /// Full-duplex I2S0 peripheral.
+    pub i2s0: I2S0,
+    /// Full-duplex I2S1 peripheral.
+    pub i2s1: I2S1,
+    /// SD / SDIO / eMMC host 0.
+    pub sdh0: SDH0,
+    /// SD / SDIO / eMMC host 1.
+    pub sdh1: SDH1,
+    /// SD / SDIO / eMMC host 2.
+    pub sdh2: SDH2,
+    /// Timer 1 and watchdog peripheral.
+    pub timer1: TIMER1,
+    /// Timer 2 and watchdog peripheral.
+    pub timer2: TIMER2,
+    /// Non-secure peripheral DMA controller.
+    pub pdma: PDMA,
 }
 
 impl Peripherals {
@@ -327,7 +457,7 @@ impl Peripherals {
     /// Hart tokens must be unique, including after any previous spawn.
     ///
     /// Run on K1/M1 with aligned, identity-mapped registers accessible at the current
-    /// privilege level, including secure UART1.
+    /// privilege level, including secure and real-time peripherals.
     ///
     /// Retain valid power, upstream clocks and reset for every access,
     /// permanently for consumed tokens and pad/clock tokens.
@@ -443,6 +573,99 @@ impl Peripherals {
                 _private: core::marker::PhantomData,
             },
             r_uart1: R_UART1 {
+                _private: core::marker::PhantomData,
+            },
+            i2c3: I2C3 {
+                _private: core::marker::PhantomData,
+            },
+            pwm0: PWM0 {
+                _private: core::marker::PhantomData,
+            },
+            pwm1: PWM1 {
+                _private: core::marker::PhantomData,
+            },
+            pwm2: PWM2 {
+                _private: core::marker::PhantomData,
+            },
+            pwm3: PWM3 {
+                _private: core::marker::PhantomData,
+            },
+            pwm4: PWM4 {
+                _private: core::marker::PhantomData,
+            },
+            pwm5: PWM5 {
+                _private: core::marker::PhantomData,
+            },
+            pwm6: PWM6 {
+                _private: core::marker::PhantomData,
+            },
+            pwm7: PWM7 {
+                _private: core::marker::PhantomData,
+            },
+            pwm8: PWM8 {
+                _private: core::marker::PhantomData,
+            },
+            pwm9: PWM9 {
+                _private: core::marker::PhantomData,
+            },
+            pwm10: PWM10 {
+                _private: core::marker::PhantomData,
+            },
+            pwm11: PWM11 {
+                _private: core::marker::PhantomData,
+            },
+            pwm12: PWM12 {
+                _private: core::marker::PhantomData,
+            },
+            pwm13: PWM13 {
+                _private: core::marker::PhantomData,
+            },
+            pwm14: PWM14 {
+                _private: core::marker::PhantomData,
+            },
+            pwm15: PWM15 {
+                _private: core::marker::PhantomData,
+            },
+            pwm16: PWM16 {
+                _private: core::marker::PhantomData,
+            },
+            pwm17: PWM17 {
+                _private: core::marker::PhantomData,
+            },
+            pwm18: PWM18 {
+                _private: core::marker::PhantomData,
+            },
+            pwm19: PWM19 {
+                _private: core::marker::PhantomData,
+            },
+            spi2: SPI2 {
+                _private: core::marker::PhantomData,
+            },
+            spi3: SPI3 {
+                _private: core::marker::PhantomData,
+            },
+            i2s0: I2S0 {
+                _private: core::marker::PhantomData,
+            },
+            i2s1: I2S1 {
+                _private: core::marker::PhantomData,
+            },
+            sdh0: SDH0 {
+                _private: core::marker::PhantomData,
+            },
+            sdh1: SDH1 {
+                _private: core::marker::PhantomData,
+            },
+            sdh2: SDH2 {
+                _private: core::marker::PhantomData,
+            },
+            timer1: TIMER1 {
+                _private: core::marker::PhantomData,
+            },
+            timer2: TIMER2 {
+                _private: core::marker::PhantomData,
+            },
+            pdma: PDMA {
                 _private: core::marker::PhantomData,
             },
         }
@@ -568,6 +791,40 @@ mod tests {
         assert_eq!(UART9::ptr() as usize, 0xd401_7800);
         assert_eq!(R_UART0::ptr() as usize, 0xc088_1000);
         assert_eq!(R_UART1::ptr() as usize, 0xc088_d000);
+        fn address<T: Deref<Target = R> + AsRef<R>, R>(ptr: *const R, expected: usize) {
+            assert_eq!(ptr as usize, expected);
+        }
+        address::<I2C3, i2c::RegisterBlock>(I2C3::ptr(), 0xf061_4000);
+        address::<PWM0, pwm::k1::RegisterBlock>(PWM0::ptr(), 0xd401_a000);
+        address::<PWM1, pwm::k1::RegisterBlock>(PWM1::ptr(), 0xd401_a400);
+        address::<PWM2, pwm::k1::RegisterBlock>(PWM2::ptr(), 0xd401_a800);
+        address::<PWM3, pwm::k1::RegisterBlock>(PWM3::ptr(), 0xd401_ac00);
+        address::<PWM4, pwm::k1::RegisterBlock>(PWM4::ptr(), 0xd401_b000);
+        address::<PWM5, pwm::k1::RegisterBlock>(PWM5::ptr(), 0xd401_b400);
+        address::<PWM6, pwm::k1::RegisterBlock>(PWM6::ptr(), 0xd401_b800);
+        address::<PWM7, pwm::k1::RegisterBlock>(PWM7::ptr(), 0xd401_bc00);
+        address::<PWM8, pwm::k1::RegisterBlock>(PWM8::ptr(), 0xd402_0000);
+        address::<PWM9, pwm::k1::RegisterBlock>(PWM9::ptr(), 0xd402_0400);
+        address::<PWM10, pwm::k1::RegisterBlock>(PWM10::ptr(), 0xd402_0800);
+        address::<PWM11, pwm::k1::RegisterBlock>(PWM11::ptr(), 0xd402_0c00);
+        address::<PWM12, pwm::k1::RegisterBlock>(PWM12::ptr(), 0xd402_1000);
+        address::<PWM13, pwm::k1::RegisterBlock>(PWM13::ptr(), 0xd402_1400);
+        address::<PWM14, pwm::k1::RegisterBlock>(PWM14::ptr(), 0xd402_1800);
+        address::<PWM15, pwm::k1::RegisterBlock>(PWM15::ptr(), 0xd402_1c00);
+        address::<PWM16, pwm::k1::RegisterBlock>(PWM16::ptr(), 0xd402_2000);
+        address::<PWM17, pwm::k1::RegisterBlock>(PWM17::ptr(), 0xd402_2400);
+        address::<PWM18, pwm::k1::RegisterBlock>(PWM18::ptr(), 0xd402_2800);
+        address::<PWM19, pwm::k1::RegisterBlock>(PWM19::ptr(), 0xd402_2c00);
+        address::<SPI2, spi::k1::RegisterBlock>(SPI2::ptr(), 0xf061_3000);
+        address::<SPI3, spi::k1::RegisterBlock>(SPI3::ptr(), 0xd401_c000);
+        address::<I2S0, spi::k1::RegisterBlock>(I2S0::ptr(), 0xd402_6000);
+        address::<I2S1, spi::k1::RegisterBlock>(I2S1::ptr(), 0xd402_6800);
+        address::<SDH0, sdh::k1::RegisterBlock>(SDH0::ptr(), 0xd428_0000);
+        address::<SDH1, sdh::k1::RegisterBlock>(SDH1::ptr(), 0xd428_0800);
+        address::<SDH2, sdh::k1::RegisterBlock>(SDH2::ptr(), 0xd428_1000);
+        address::<TIMER1, timer::k1::RegisterBlock>(TIMER1::ptr(), 0xd401_4000);
+        address::<TIMER2, timer::k1::RegisterBlock>(TIMER2::ptr(), 0xd401_6000);
+        address::<PDMA, pdma::k1::RegisterBlock>(PDMA::ptr(), 0xd400_0000);
         assert_eq!(core::mem::size_of::<Peripherals>(), 0);
     }
 }
