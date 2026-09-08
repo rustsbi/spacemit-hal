@@ -1,8 +1,9 @@
 //! K3 peripheral ownership and addresses.
 
 use spacemit_hal::{
-    adma, apbc, apbs, apmu, can, ciu, espi, gpio, hdma, hsio_phy, i2c, iopmp, ir, mailbox, mfpr,
-    mpmu, pdma, pwm, qspi, ri2s, sdh, sec_ciu, spi, spinlock, timer, tsensor, uart, ufs, usb2_phy,
+    adma, apbc, apbc2, apbs, aplic, apmu, can, ccic, ciu, dciu, dpu, dsi, emac, espi, gpio, hdma,
+    hsio_phy, i2c, iopmp, ir, mailbox, mfpr, mpmu, pcie, pdma, pwm, qspi, rcpu, ri2s, rpmu, rtc,
+    sdh, sec_ciu, spi, spinlock, timer, tsensor, uart, ufs, usb2_phy, usb3, v2d, vpu,
 };
 
 // Address map: K3 manual and /proc/device-tree on K3 Pico ITX, read 2026-09-08.
@@ -12,6 +13,8 @@ use spacemit_hal::{
 // R_UART0..5 name the real-time-domain nodes (spacemit,k1-uart), whose
 // serial11..16 aliases select /soc/serial@c0881000 through serial@c0881500.
 // SDH0..2 use the software instance IDs, not MMC card enumeration.
+// Camera instances also use the vendor k3-camera.dtsi; CSI PHY aliases share CCIC tokens.
+// https://github.com/spacemit-com/linux-6.18/blob/4158237f35b8fd62ba198c1627e5a66e5a34c50f/arch/riscv/boot/dts/spacemit/k3-camera.dtsi
 
 soc! {
     /// I2C0 (TWSI0) peripheral.
@@ -324,6 +327,78 @@ soc! {
     pub struct HSIO_PHY8 => 0xcad3_0000, hsio_phy::k3::RegisterBlock;
     /// HSIO PHY9 USB3 port A registers.
     pub struct HSIO_PHY9 => 0xcad4_0000, hsio_phy::k3::RegisterBlock;
+    /// Secure APB clock and reset controller.
+    pub struct APBC2 => 0xf061_0000, apbc2::k3::RegisterBlock;
+    /// Real-time clock.
+    pub struct RTC => 0xd401_0000, rtc::k3::RegisterBlock;
+    /// Secure real-time clock.
+    pub struct SEC_RTC => 0xf061_5000, rtc::k3::RegisterBlock;
+    /// Real-time CPU system controller.
+    pub struct RCPU => 0xc088_0000, rcpu::k3::RegisterBlock;
+    /// Real-time audio clock controller.
+    pub struct R_AUDIO_CLOCK => 0xc088_2000, rcpu::k3::AudioClockRegisters;
+    /// Real-time power-management controller.
+    pub struct RPMU => 0xc088_c000, rpmu::k3::RegisterBlock;
+    /// Real-time PWM clock controller.
+    pub struct R_PWM_CLOCK => 0xc088_d000, rcpu::k3::PwmClockRegisters;
+    /// DMA system clock and reset controller.
+    pub struct DCIU => 0xd844_0000, dciu::k3::RegisterBlock;
+    /// R UART CLOCK peripheral.
+    pub struct R_UART_CLOCK => 0xc088_1f00, rcpu::k3::UartClockRegisters;
+    /// R SPI CLOCK peripheral.
+    pub struct R_SPI_CLOCK => 0xc088_5f00, rcpu::k3::SpiClockRegisters;
+    /// R I2C CLOCK peripheral.
+    pub struct R_I2C_CLOCK => 0xc088_6f00, rcpu::k3::I2cClockRegisters;
+    /// EMAC0 peripheral.
+    pub struct EMAC0 => 0xcac8_0000, emac::k3::RegisterBlock;
+    /// EMAC1 peripheral.
+    pub struct EMAC1 => 0xcac8_2000, emac::k3::RegisterBlock;
+    /// EMAC2 peripheral.
+    pub struct EMAC2 => 0xcac8_e000, emac::k3::RegisterBlock;
+    /// R EMAC peripheral.
+    pub struct R_EMAC => 0xa000_0000, emac::k3::RegisterBlock;
+    /// USB2 HOST peripheral.
+    pub struct USB2_HOST => 0xc0a0_0000, usb3::RegisterBlock;
+    /// USB3 A peripheral.
+    pub struct USB3_A => 0xcad0_0000, usb3::RegisterBlock;
+    /// USB3 B peripheral.
+    pub struct USB3_B => 0x8140_0000, usb3::RegisterBlock;
+    /// USB3 C peripheral.
+    pub struct USB3_C => 0x8170_0000, usb3::RegisterBlock;
+    /// USB3 D peripheral.
+    pub struct USB3_D => 0x81a0_0000, usb3::RegisterBlock;
+    /// PCIE0 LINK peripheral.
+    pub struct PCIE0_LINK => 0x8290_0000, pcie::k3::RegisterBlock;
+    /// PCIE1 LINK peripheral.
+    pub struct PCIE1_LINK => 0x82c0_0000, pcie::k3::RegisterBlock;
+    /// PCIE2 LINK peripheral.
+    pub struct PCIE2_LINK => 0x82d0_0000, pcie::k3::RegisterBlock;
+    /// PCIE3 LINK peripheral.
+    pub struct PCIE3_LINK => 0x82a0_0000, pcie::k3::RegisterBlock;
+    /// PCIE4 LINK peripheral.
+    pub struct PCIE4_LINK => 0x82b0_0000, pcie::k3::RegisterBlock;
+    /// DSI0 peripheral.
+    pub struct DSI0 => 0xd421_a000, dsi::k3::RegisterBlock;
+    /// DSI1 peripheral.
+    pub struct DSI1 => 0xd421_aa00, dsi::k3::RegisterBlock;
+    /// 2D graphics engine.
+    pub struct V2D => 0xc010_0000, v2d::RegisterBlock;
+    /// Camera capture and CSI PHY 0.
+    pub struct CCIC0 => 0xd420_a000, ccic::k3::RegisterBlock;
+    /// Camera capture and CSI PHY 1.
+    pub struct CCIC1 => 0xd420_a800, ccic::k3::RegisterBlock;
+    /// Camera capture and CSI PHY 2.
+    pub struct CCIC2 => 0xd420_6000, ccic::k3::RegisterBlock;
+    /// Camera capture and CSI PHY 3.
+    pub struct CCIC3 => 0xd420_6800, ccic::k3::RegisterBlock;
+    /// Video processing unit.
+    pub struct VPU => 0xc050_0000, vpu::RegisterBlock;
+    /// Display processing unit 0.
+    pub struct DPU0 => 0xc034_0000, dpu::k3::RegisterBlock;
+    /// Display processing unit 1.
+    pub struct DPU1 => 0xc044_0000, dpu::k3::RegisterBlock;
+    /// Supervisor advanced interrupt controller.
+    pub struct SAPLIC => 0xe080_4000, aplic::k3::RegisterBlock;
 }
 
 impl_clock_controller!(apbs, APBS, apbs::k3::RegisterBlock);
@@ -744,6 +819,78 @@ pub struct Peripherals {
     pub hsio_phy8: HSIO_PHY8,
     /// HSIO PHY9 USB3 port A registers.
     pub hsio_phy9: HSIO_PHY9,
+    /// Secure APB clock and reset controller.
+    pub apbc2: APBC2,
+    /// Real-time clock.
+    pub rtc: RTC,
+    /// Secure real-time clock.
+    pub sec_rtc: SEC_RTC,
+    /// Real-time CPU system controller.
+    pub rcpu: RCPU,
+    /// Real-time audio clock controller.
+    pub r_audio_clock: R_AUDIO_CLOCK,
+    /// Real-time power-management controller.
+    pub rpmu: RPMU,
+    /// Real-time PWM clock controller.
+    pub r_pwm_clock: R_PWM_CLOCK,
+    /// DMA system clock and reset controller.
+    pub dciu: DCIU,
+    /// R UART CLOCK peripheral.
+    pub r_uart_clock: R_UART_CLOCK,
+    /// R SPI CLOCK peripheral.
+    pub r_spi_clock: R_SPI_CLOCK,
+    /// R I2C CLOCK peripheral.
+    pub r_i2c_clock: R_I2C_CLOCK,
+    /// EMAC0 peripheral.
+    pub emac0: EMAC0,
+    /// EMAC1 peripheral.
+    pub emac1: EMAC1,
+    /// EMAC2 peripheral.
+    pub emac2: EMAC2,
+    /// R EMAC peripheral.
+    pub r_emac: R_EMAC,
+    /// USB2 HOST peripheral.
+    pub usb2_host: USB2_HOST,
+    /// USB3 A peripheral.
+    pub usb3_a: USB3_A,
+    /// USB3 B peripheral.
+    pub usb3_b: USB3_B,
+    /// USB3 C peripheral.
+    pub usb3_c: USB3_C,
+    /// USB3 D peripheral.
+    pub usb3_d: USB3_D,
+    /// PCIE0 LINK peripheral.
+    pub pcie0_link: PCIE0_LINK,
+    /// PCIE1 LINK peripheral.
+    pub pcie1_link: PCIE1_LINK,
+    /// PCIE2 LINK peripheral.
+    pub pcie2_link: PCIE2_LINK,
+    /// PCIE3 LINK peripheral.
+    pub pcie3_link: PCIE3_LINK,
+    /// PCIE4 LINK peripheral.
+    pub pcie4_link: PCIE4_LINK,
+    /// DSI0 peripheral.
+    pub dsi0: DSI0,
+    /// DSI1 peripheral.
+    pub dsi1: DSI1,
+    /// 2D graphics engine.
+    pub v2d: V2D,
+    /// Camera capture and CSI PHY 0.
+    pub ccic0: CCIC0,
+    /// Camera capture and CSI PHY 1.
+    pub ccic1: CCIC1,
+    /// Camera capture and CSI PHY 2.
+    pub ccic2: CCIC2,
+    /// Camera capture and CSI PHY 3.
+    pub ccic3: CCIC3,
+    /// Video processing unit.
+    pub vpu: VPU,
+    /// Display processing unit 0.
+    pub dpu0: DPU0,
+    /// Display processing unit 1.
+    pub dpu1: DPU1,
+    /// Supervisor advanced interrupt controller.
+    pub saplic: SAPLIC,
 }
 
 impl Peripherals {
@@ -785,6 +932,114 @@ impl Peripherals {
     pub unsafe fn steal() -> Self {
         super::PERIPHERALS_TAKEN.store(true, core::sync::atomic::Ordering::Release);
         Self {
+            saplic: SAPLIC {
+                _private: core::marker::PhantomData,
+            },
+            vpu: VPU {
+                _private: core::marker::PhantomData,
+            },
+            dpu0: DPU0 {
+                _private: core::marker::PhantomData,
+            },
+            dpu1: DPU1 {
+                _private: core::marker::PhantomData,
+            },
+            v2d: V2D {
+                _private: core::marker::PhantomData,
+            },
+            ccic0: CCIC0 {
+                _private: core::marker::PhantomData,
+            },
+            ccic1: CCIC1 {
+                _private: core::marker::PhantomData,
+            },
+            ccic2: CCIC2 {
+                _private: core::marker::PhantomData,
+            },
+            ccic3: CCIC3 {
+                _private: core::marker::PhantomData,
+            },
+            dsi0: DSI0 {
+                _private: core::marker::PhantomData,
+            },
+            dsi1: DSI1 {
+                _private: core::marker::PhantomData,
+            },
+            apbc2: APBC2 {
+                _private: core::marker::PhantomData,
+            },
+            rtc: RTC {
+                _private: core::marker::PhantomData,
+            },
+            sec_rtc: SEC_RTC {
+                _private: core::marker::PhantomData,
+            },
+            rcpu: RCPU {
+                _private: core::marker::PhantomData,
+            },
+            r_audio_clock: R_AUDIO_CLOCK {
+                _private: core::marker::PhantomData,
+            },
+            rpmu: RPMU {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm_clock: R_PWM_CLOCK {
+                _private: core::marker::PhantomData,
+            },
+            dciu: DCIU {
+                _private: core::marker::PhantomData,
+            },
+            r_uart_clock: R_UART_CLOCK {
+                _private: core::marker::PhantomData,
+            },
+            r_spi_clock: R_SPI_CLOCK {
+                _private: core::marker::PhantomData,
+            },
+            r_i2c_clock: R_I2C_CLOCK {
+                _private: core::marker::PhantomData,
+            },
+            emac0: EMAC0 {
+                _private: core::marker::PhantomData,
+            },
+            emac1: EMAC1 {
+                _private: core::marker::PhantomData,
+            },
+            emac2: EMAC2 {
+                _private: core::marker::PhantomData,
+            },
+            r_emac: R_EMAC {
+                _private: core::marker::PhantomData,
+            },
+            usb2_host: USB2_HOST {
+                _private: core::marker::PhantomData,
+            },
+            usb3_a: USB3_A {
+                _private: core::marker::PhantomData,
+            },
+            usb3_b: USB3_B {
+                _private: core::marker::PhantomData,
+            },
+            usb3_c: USB3_C {
+                _private: core::marker::PhantomData,
+            },
+            usb3_d: USB3_D {
+                _private: core::marker::PhantomData,
+            },
+            pcie0_link: PCIE0_LINK {
+                _private: core::marker::PhantomData,
+            },
+            pcie1_link: PCIE1_LINK {
+                _private: core::marker::PhantomData,
+            },
+            pcie2_link: PCIE2_LINK {
+                _private: core::marker::PhantomData,
+            },
+            pcie3_link: PCIE3_LINK {
+                _private: core::marker::PhantomData,
+            },
+            pcie4_link: PCIE4_LINK {
+                _private: core::marker::PhantomData,
+            },
             // SAFETY: These are all K3 application hart IDs; steal transfers them once.
             harts: Harts {
                 hart0: unsafe { crate::hart::Hart::new() },
@@ -1497,6 +1752,42 @@ mod tests {
         address::<HSIO_PHY5, hsio_phy::k3::RegisterBlock>(HSIO_PHY5::ptr(), 0x8220_0000);
         address::<HSIO_PHY8, hsio_phy::k3::RegisterBlock>(HSIO_PHY8::ptr(), 0xcad3_0000);
         address::<HSIO_PHY9, hsio_phy::k3::RegisterBlock>(HSIO_PHY9::ptr(), 0xcad4_0000);
+        address::<APBC2, apbc2::k3::RegisterBlock>(APBC2::ptr(), 0xf061_0000);
+        address::<RTC, rtc::k3::RegisterBlock>(RTC::ptr(), 0xd401_0000);
+        address::<SEC_RTC, rtc::k3::RegisterBlock>(SEC_RTC::ptr(), 0xf061_5000);
+        address::<RCPU, rcpu::k3::RegisterBlock>(RCPU::ptr(), 0xc088_0000);
+        address::<R_AUDIO_CLOCK, rcpu::k3::AudioClockRegisters>(R_AUDIO_CLOCK::ptr(), 0xc088_2000);
+        address::<RPMU, rpmu::k3::RegisterBlock>(RPMU::ptr(), 0xc088_c000);
+        address::<R_PWM_CLOCK, rcpu::k3::PwmClockRegisters>(R_PWM_CLOCK::ptr(), 0xc088_d000);
+        address::<DCIU, dciu::k3::RegisterBlock>(DCIU::ptr(), 0xd844_0000);
+        address::<R_UART_CLOCK, rcpu::k3::UartClockRegisters>(R_UART_CLOCK::ptr(), 0xc088_1f00);
+        address::<R_SPI_CLOCK, rcpu::k3::SpiClockRegisters>(R_SPI_CLOCK::ptr(), 0xc088_5f00);
+        address::<R_I2C_CLOCK, rcpu::k3::I2cClockRegisters>(R_I2C_CLOCK::ptr(), 0xc088_6f00);
+        address::<EMAC0, emac::k3::RegisterBlock>(EMAC0::ptr(), 0xcac8_0000);
+        address::<EMAC1, emac::k3::RegisterBlock>(EMAC1::ptr(), 0xcac8_2000);
+        address::<EMAC2, emac::k3::RegisterBlock>(EMAC2::ptr(), 0xcac8_e000);
+        address::<R_EMAC, emac::k3::RegisterBlock>(R_EMAC::ptr(), 0xa000_0000);
+        address::<USB2_HOST, usb3::RegisterBlock>(USB2_HOST::ptr(), 0xc0a0_0000);
+        address::<USB3_A, usb3::RegisterBlock>(USB3_A::ptr(), 0xcad0_0000);
+        address::<USB3_B, usb3::RegisterBlock>(USB3_B::ptr(), 0x8140_0000);
+        address::<USB3_C, usb3::RegisterBlock>(USB3_C::ptr(), 0x8170_0000);
+        address::<USB3_D, usb3::RegisterBlock>(USB3_D::ptr(), 0x81a0_0000);
+        address::<PCIE0_LINK, pcie::k3::RegisterBlock>(PCIE0_LINK::ptr(), 0x8290_0000);
+        address::<PCIE1_LINK, pcie::k3::RegisterBlock>(PCIE1_LINK::ptr(), 0x82c0_0000);
+        address::<PCIE2_LINK, pcie::k3::RegisterBlock>(PCIE2_LINK::ptr(), 0x82d0_0000);
+        address::<PCIE3_LINK, pcie::k3::RegisterBlock>(PCIE3_LINK::ptr(), 0x82a0_0000);
+        address::<PCIE4_LINK, pcie::k3::RegisterBlock>(PCIE4_LINK::ptr(), 0x82b0_0000);
+        address::<DSI0, dsi::k3::RegisterBlock>(DSI0::ptr(), 0xd421_a000);
+        address::<DSI1, dsi::k3::RegisterBlock>(DSI1::ptr(), 0xd421_aa00);
+        address::<V2D, v2d::RegisterBlock>(V2D::ptr(), 0xc010_0000);
+        address::<CCIC0, ccic::k3::RegisterBlock>(CCIC0::ptr(), 0xd420_a000);
+        address::<CCIC1, ccic::k3::RegisterBlock>(CCIC1::ptr(), 0xd420_a800);
+        address::<CCIC2, ccic::k3::RegisterBlock>(CCIC2::ptr(), 0xd420_6000);
+        address::<CCIC3, ccic::k3::RegisterBlock>(CCIC3::ptr(), 0xd420_6800);
+        address::<VPU, vpu::RegisterBlock>(VPU::ptr(), 0xc050_0000);
+        address::<DPU0, dpu::k3::RegisterBlock>(DPU0::ptr(), 0xc034_0000);
+        address::<DPU1, dpu::k3::RegisterBlock>(DPU1::ptr(), 0xc044_0000);
+        address::<SAPLIC, aplic::k3::RegisterBlock>(SAPLIC::ptr(), 0xe080_4000);
         assert_eq!(core::mem::size_of::<Peripherals>(), 0);
     }
 }

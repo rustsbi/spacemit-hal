@@ -1,4 +1,4 @@
 //! Infrared receiver registers.
 
 mod register;
-pub use register::k3;
+pub use register::{k1, k3};

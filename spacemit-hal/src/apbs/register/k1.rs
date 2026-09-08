@@ -12,14 +12,27 @@ use volatile_register::RW;
 /// K1 PLL registers.
 #[repr(C)]
 pub struct RegisterBlock {
-    _reserved_0x000: [u32; 64],
+    _padding_0x000: [u32; 64],
     /// PLL1 software control 1.
     pub pll1_software_control1: RW<u32>,
     /// PLL1 software control 2.
     pub pll1_software_control2: RW<Pll1SoftwareControl2>,
     /// PLL1 software control 3.
     pub pll1_software_control3: RW<u32>,
-    _reserved_0x10c: [u32; 957],
+    _padding_0x10c: [u32; 3],
+    /// PLL2 software control 1.
+    pub pll2_software_control1: RW<u32>,
+    /// PLL2 software control 2.
+    pub pll2_software_control2: RW<u32>,
+    /// PLL2 software control 3.
+    pub pll2_software_control3: RW<u32>,
+    /// PLL3 software control 1.
+    pub pll3_software_control1: RW<u32>,
+    /// PLL3 software control 2.
+    pub pll3_software_control2: RW<u32>,
+    /// PLL3 software control 3.
+    pub pll3_software_control3: RW<u32>,
+    _padding_0x130: [u32; 948],
 }
 
 /// K1 PLL1 configuration and output clock gates.
@@ -427,6 +440,12 @@ mod tests {
         assert_eq!(offset_of!(RegisterBlock, pll1_software_control1), 0x100);
         assert_eq!(offset_of!(RegisterBlock, pll1_software_control2), 0x104);
         assert_eq!(offset_of!(RegisterBlock, pll1_software_control3), 0x108);
+        assert_eq!(offset_of!(RegisterBlock, pll2_software_control1), 0x118);
+        assert_eq!(offset_of!(RegisterBlock, pll2_software_control2), 0x11c);
+        assert_eq!(offset_of!(RegisterBlock, pll2_software_control3), 0x120);
+        assert_eq!(offset_of!(RegisterBlock, pll3_software_control1), 0x124);
+        assert_eq!(offset_of!(RegisterBlock, pll3_software_control2), 0x128);
+        assert_eq!(offset_of!(RegisterBlock, pll3_software_control3), 0x12c);
         assert_eq!(size_of::<RegisterBlock>(), 0x1000);
         assert_eq!(align_of::<RegisterBlock>(), 4);
     }

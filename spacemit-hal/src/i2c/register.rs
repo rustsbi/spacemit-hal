@@ -1,5 +1,6 @@
 use crate::gpio::RW1C;
-use volatile_register::{RO, RW};
+use crate::register::RC;
+use volatile_register::{RO, RW, WO};
 
 mod commons;
 pub use commons::{ControlRegister, DataBuffer};
@@ -9,11 +10,12 @@ pub use commons::{ControlRegister, DataBuffer};
 // https://github.com/spacemit-com/uboot-2022.10/blob/1fa1ca64e9705a3650bcc7c21f6666949290830f/drivers/i2c/spacemit_i2c.c
 // K3 declares the same interface through its spacemit,k1-i2c compatible fallback.
 // https://github.com/torvalds/linux/blob/master/arch/riscv/boot/dts/spacemit/k3.dtsi
-// Only the first 0x20 bytes are modeled; FIFO registers at 0x20..0x37 are omitted.
+// FIFO offsets: K1 User Manual §16.1.4 and K3 User Manual §14.6.4.
+// WFIFO is a write port despite the K1 bit table's incorrect R annotation.
 // ICR contains configuration and commands: write deliberate complete values.
 // ISR mixes read-only state and W1C events: acknowledge only selected event bits.
 
-/// K1/M1 and K3 I2C registers for byte-mode transfers.
+/// K1/M1 and K3 I2C registers.
 #[repr(C)]
 pub struct RegisterBlock {
     /// Unit control and transfer commands (ICR).
@@ -32,6 +34,18 @@ pub struct RegisterBlock {
     pub reset_cycle: RW<u32>,
     /// Physical SDA and SCL levels (IBMR).
     pub bus_monitor: RO<u32>,
+    /// Transmit FIFO data and commands.
+    pub write_fifo: WO<u32>,
+    /// Transmit FIFO write pointer; zero flushes the FIFO.
+    pub write_fifo_write_pointer: RW<u32>,
+    /// Transmit FIFO read pointer.
+    pub write_fifo_read_pointer: RW<u32>,
+    /// Receive FIFO pop port.
+    pub read_fifo: RC<u32>,
+    /// Receive FIFO write pointer.
+    pub read_fifo_write_pointer: RW<u32>,
+    /// Receive FIFO read pointer.
+    pub read_fifo_read_pointer: RW<u32>,
 }
 
 #[cfg(test)]
@@ -49,7 +63,10 @@ mod tests {
         assert_eq!(offset_of!(RegisterBlock, wait_count), 0x14);
         assert_eq!(offset_of!(RegisterBlock, reset_cycle), 0x18);
         assert_eq!(offset_of!(RegisterBlock, bus_monitor), 0x1c);
-        assert_eq!(size_of::<RegisterBlock>(), 0x20);
+        assert_eq!(offset_of!(RegisterBlock, write_fifo), 0x20);
+        assert_eq!(offset_of!(RegisterBlock, read_fifo), 0x2c);
+        assert_eq!(offset_of!(RegisterBlock, read_fifo_read_pointer), 0x34);
+        assert_eq!(size_of::<RegisterBlock>(), 0x38);
         assert_eq!(align_of::<RegisterBlock>(), 4);
     }
 

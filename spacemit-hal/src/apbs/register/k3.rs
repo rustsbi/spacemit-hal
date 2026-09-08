@@ -13,15 +13,63 @@ use volatile_register::{RO, RW};
 /// K3 PLL registers.
 #[repr(C)]
 pub struct RegisterBlock {
-    _reserved_0x000: [u32; 65],
+    _padding_0x000: [u32; 64],
+    /// PLL1 software control 1.
+    pub pll1_software_control1: RW<u32>,
     /// PLL1 software control 2.
     pub pll1_software_control2: RW<Pll1SoftwareControl2>,
-    _padding_0x108: [u32; 28],
+    /// PLL1 software control 3.
+    pub pll1_software_control3: RW<u32>,
+    _padding_0x10c: [u32; 3],
+    /// PLL2 software control 1.
+    pub pll2_software_control1: RW<u32>,
+    /// PLL2 software control 2.
+    pub pll2_software_control2: RW<u32>,
+    /// PLL2 software control 3.
+    pub pll2_software_control3: RW<u32>,
+    /// PLL3 software control 1.
+    pub pll3_software_control1: RW<u32>,
+    /// PLL3 software control 2.
+    pub pll3_software_control2: RW<u32>,
+    /// PLL3 software control 3.
+    pub pll3_software_control3: RW<u32>,
+    /// PLL4 software control 1.
+    pub pll4_software_control1: RW<u32>,
+    /// PLL4 software control 2.
+    pub pll4_software_control2: RW<u32>,
+    /// PLL4 software control 3.
+    pub pll4_software_control3: RW<u32>,
+    /// PLL5 software control 1.
+    pub pll5_software_control1: RW<u32>,
+    /// PLL5 software control 2.
+    pub pll5_software_control2: RW<u32>,
+    /// PLL5 software control 3.
+    pub pll5_software_control3: RW<u32>,
+    /// PLL6 software control 1.
+    pub pll6_software_control1: RW<u32>,
+    /// PLL6 software control 2.
+    pub pll6_software_control2: RW<u32>,
+    /// PLL6 software control 3.
+    pub pll6_software_control3: RW<u32>,
+    _padding_0x154: [u32; 1],
+    /// PLL7 software control 1.
+    pub pll7_software_control1: RW<u32>,
+    /// PLL7 software control 2.
+    pub pll7_software_control2: RW<u32>,
+    /// PLL7 software control 3.
+    pub pll7_software_control3: RW<u32>,
+    _padding_0x164: [u32; 5],
     /// USB3/PCIe PHY calibration control.
     pub phy_calibration_control: RW<u32>,
     /// USB3/PCIe PHY calibration status.
     pub phy_calibration_status: RO<u32>,
-    _padding_0x180: [u32; 16288],
+    /// PLL8 software control 1.
+    pub pll8_software_control1: RW<u32>,
+    /// PLL8 software control 2.
+    pub pll8_software_control2: RW<u32>,
+    /// PLL8 software control 3.
+    pub pll8_software_control3: RW<u32>,
+    _padding_0x18c: [u32; 16285],
 }
 
 /// K3 PLL1 configuration and output clock gates.
@@ -345,6 +393,29 @@ mod tests {
         assert_eq!(offset_of!(RegisterBlock, pll1_software_control2), 0x104);
         assert_eq!(offset_of!(RegisterBlock, phy_calibration_control), 0x178);
         assert_eq!(offset_of!(RegisterBlock, phy_calibration_status), 0x17c);
+        assert_eq!(offset_of!(RegisterBlock, pll1_software_control1), 0x100);
+        assert_eq!(offset_of!(RegisterBlock, pll1_software_control3), 0x108);
+        assert_eq!(offset_of!(RegisterBlock, pll2_software_control1), 0x118);
+        assert_eq!(offset_of!(RegisterBlock, pll2_software_control2), 0x11c);
+        assert_eq!(offset_of!(RegisterBlock, pll2_software_control3), 0x120);
+        assert_eq!(offset_of!(RegisterBlock, pll3_software_control1), 0x124);
+        assert_eq!(offset_of!(RegisterBlock, pll3_software_control2), 0x128);
+        assert_eq!(offset_of!(RegisterBlock, pll3_software_control3), 0x12c);
+        assert_eq!(offset_of!(RegisterBlock, pll4_software_control1), 0x130);
+        assert_eq!(offset_of!(RegisterBlock, pll4_software_control2), 0x134);
+        assert_eq!(offset_of!(RegisterBlock, pll4_software_control3), 0x138);
+        assert_eq!(offset_of!(RegisterBlock, pll5_software_control1), 0x13c);
+        assert_eq!(offset_of!(RegisterBlock, pll5_software_control2), 0x140);
+        assert_eq!(offset_of!(RegisterBlock, pll5_software_control3), 0x144);
+        assert_eq!(offset_of!(RegisterBlock, pll6_software_control1), 0x148);
+        assert_eq!(offset_of!(RegisterBlock, pll6_software_control2), 0x14c);
+        assert_eq!(offset_of!(RegisterBlock, pll6_software_control3), 0x150);
+        assert_eq!(offset_of!(RegisterBlock, pll7_software_control1), 0x158);
+        assert_eq!(offset_of!(RegisterBlock, pll7_software_control2), 0x15c);
+        assert_eq!(offset_of!(RegisterBlock, pll7_software_control3), 0x160);
+        assert_eq!(offset_of!(RegisterBlock, pll8_software_control1), 0x180);
+        assert_eq!(offset_of!(RegisterBlock, pll8_software_control2), 0x184);
+        assert_eq!(offset_of!(RegisterBlock, pll8_software_control3), 0x188);
         assert_eq!(size_of::<RegisterBlock>(), 0x10000);
         assert_eq!(align_of::<RegisterBlock>(), 4);
     }

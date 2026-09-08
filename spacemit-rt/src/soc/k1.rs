@@ -1,7 +1,9 @@
 //! K1/M1 peripheral ownership and addresses.
 
 use spacemit_hal::{
-    apbc, apbs, apmu, ciu, counter, gpio, i2c, mfpr, mpmu, pdma, pwm, qspi, sdh, spi, timer, uart,
+    adma, ahbdma, apbc, apbc2, apbs, apmu, can, ccic, ciu, counter, dciu, dpu, dsi, emac, gpio,
+    i2c, ir, mailbox, mfpr, mpmu, onewire, pcie, pdma, plic, pwm, qspi, rcpu, ri2s, rpmu, rtc, sdh,
+    spi, timer, trng, tsensor, uart, usb2, usb2_phy, usb3, v2d, vpu,
 };
 
 // Address map: Linux k1.dtsi and the vendor k1-x.dtsi (UART1 and R_UART0/1).
@@ -11,6 +13,9 @@ use spacemit_hal::{
 // Additional instances: K1 user manual, section 6.2.
 // https://github.com/spacemit-com/docs-chip/blob/main/en/key_stone/k1/k1_docs/k1_usermanual/6.Address_Mapping.md
 // SDH0..2 are zero-based software IDs (SDH1..3 in the manual).
+// Camera and display instances use the vendor k1-x-camera-sdk, k1-x-lcd and k1-x-hdmi DTSIs.
+// https://github.com/spacemit-com/linux-6.6/tree/k1-bl-v2.2.y/arch/riscv/boot/dts/spacemit
+// CSI PHY/CCIC and USB OTG/UDC/EHCI aliases each have one token.
 
 soc! {
     /// I2C0 (TWSI0) peripheral.
@@ -134,6 +139,126 @@ soc! {
     pub struct TIMER2 => 0xd401_6000, timer::k1::RegisterBlock;
     /// Non-secure peripheral DMA controller.
     pub struct PDMA => 0xd400_0000, pdma::k1::RegisterBlock;
+    /// Secure APB clock and reset controller.
+    pub struct APBC2 => 0xf061_0000, apbc2::k1::RegisterBlock;
+    /// Real-time clock.
+    pub struct RTC => 0xd401_0000, rtc::k1::RegisterBlock;
+    /// Secure real-time clock.
+    pub struct SEC_RTC => 0xf061_5000, rtc::k1::RegisterBlock;
+    /// Real-time CPU system controller.
+    pub struct RCPU => 0xc088_0000, rcpu::k1::RegisterBlock;
+    /// Real-time audio clock controller.
+    pub struct R_AUDIO_CLOCK => 0xc088_2000, rcpu::k1::AudioClockRegisters;
+    /// Real-time power-management controller.
+    pub struct RPMU => 0xc088_c000, rpmu::k1::RegisterBlock;
+    /// Real-time PWM clock controller.
+    pub struct R_PWM_CLOCK => 0xc088_8000, rcpu::k1::PwmClockRegisters;
+    /// One-Wire bus master.
+    pub struct ONEWIRE => 0xd401_1800, onewire::k1::RegisterBlock;
+    /// Application-side mailbox.
+    pub struct MAILBOX => 0xd401_3400, mailbox::k1::RegisterBlock;
+    /// Real-time-side mailbox.
+    pub struct R_MAILBOX => 0xc088_a000, mailbox::k1::RegisterBlock;
+    /// Infrared receiver.
+    pub struct IR => 0xd401_7f00, ir::k1::RegisterBlock;
+    /// Real-time infrared receiver.
+    pub struct R_IR => 0xc088_e000, ir::k1::RegisterBlock;
+    /// Temperature sensor.
+    pub struct TSENSOR => 0xd401_8000, tsensor::k1::RegisterBlock;
+    /// CAN-FD controller.
+    pub struct CAN0 => 0xd402_8000, can::k1::RegisterBlock;
+    /// Real-time CAN-FD controller.
+    pub struct R_CAN0 => 0xc087_0000, can::k1::RegisterBlock;
+    /// Random generator and DMA.
+    pub struct TRNG => 0xf070_3800, trng::k1::RegisterBlock;
+    /// Real-time AHB DMA.
+    pub struct AHBDMA => 0xc088_4000, ahbdma::k1::RegisterBlock;
+    /// Ethernet MAC 0.
+    pub struct EMAC0 => 0xcac8_0000, emac::k1::RegisterBlock;
+    /// Ethernet MAC 1.
+    pub struct EMAC1 => 0xcac8_1000, emac::k1::RegisterBlock;
+    /// PMU timer and watchdog.
+    pub struct PMU_TIMER => 0xd408_0000, timer::k1::RegisterBlock;
+    /// Secure timer and watchdog.
+    pub struct SEC_TIMER => 0xf061_6000, timer::k1::RegisterBlock;
+    /// USB2 OTG controller.
+    pub struct USB2_OTG => 0xc090_0100, usb2::k1::RegisterBlock;
+    /// USB2 host controller.
+    pub struct USB2_HOST => 0xc098_0100, usb2::k1::RegisterBlock;
+    /// USB2 OTG PHY.
+    pub struct USB2_PHY_OTG => 0xc094_0000, usb2_phy::k1::RegisterBlock;
+    /// USB2 host PHY.
+    pub struct USB2_PHY_HOST => 0xc09c_0000, usb2_phy::k1::RegisterBlock;
+    /// USB3 UTMI PHY.
+    pub struct USB3_UTMI => 0xc0a3_0000, usb2_phy::k1::RegisterBlock;
+    /// DWC3 USB3 controller.
+    pub struct USB3 => 0xc0a0_0000, usb3::RegisterBlock;
+    /// Real-time PWM 0.
+    pub struct R_PWM0 => 0xc088_8100, pwm::k1::RegisterBlock;
+    /// Real-time PWM 1.
+    pub struct R_PWM1 => 0xc088_8200, pwm::k1::RegisterBlock;
+    /// Real-time PWM 2.
+    pub struct R_PWM2 => 0xc088_8300, pwm::k1::RegisterBlock;
+    /// Real-time PWM 3.
+    pub struct R_PWM3 => 0xc088_8400, pwm::k1::RegisterBlock;
+    /// Real-time PWM 4.
+    pub struct R_PWM4 => 0xc088_8500, pwm::k1::RegisterBlock;
+    /// Real-time PWM 5.
+    pub struct R_PWM5 => 0xc088_8600, pwm::k1::RegisterBlock;
+    /// Real-time PWM 6.
+    pub struct R_PWM6 => 0xc088_8700, pwm::k1::RegisterBlock;
+    /// Real-time PWM 7.
+    pub struct R_PWM7 => 0xc088_8800, pwm::k1::RegisterBlock;
+    /// Real-time PWM 8.
+    pub struct R_PWM8 => 0xc088_8900, pwm::k1::RegisterBlock;
+    /// Real-time PWM 9.
+    pub struct R_PWM9 => 0xc088_8a00, pwm::k1::RegisterBlock;
+    /// Audio DMA 0.
+    pub struct ADMA0 => 0xc088_3000, adma::k1::RegisterBlock;
+    /// Half-duplex audio interface 0.
+    pub struct RI2S0 => 0xc088_3100, ri2s::k1::RegisterBlock;
+    /// Audio DMA 1.
+    pub struct ADMA1 => 0xc088_3400, adma::k1::RegisterBlock;
+    /// Half-duplex audio interface 1.
+    pub struct RI2S1 => 0xc088_3500, ri2s::k1::RegisterBlock;
+    /// Audio DMA 2.
+    pub struct ADMA2 => 0xc088_3800, adma::k1::RegisterBlock;
+    /// Half-duplex audio interface 2.
+    pub struct RI2S2 => 0xc088_3900, ri2s::k1::RegisterBlock;
+    /// Audio DMA 3.
+    pub struct ADMA3 => 0xc088_3c00, adma::k1::RegisterBlock;
+    /// Half-duplex audio interface 3.
+    pub struct RI2S3 => 0xc088_3d00, ri2s::k1::RegisterBlock;
+    /// PCIe 0 link-management registers.
+    pub struct PCIE0_LINK => 0xc0b2_0000, pcie::k1::RegisterBlock;
+    /// PCIe 1 link-management registers.
+    pub struct PCIE1_LINK => 0xc0c2_0000, pcie::k1::RegisterBlock;
+    /// PCIe 2 link-management registers.
+    pub struct PCIE2_LINK => 0xc0d2_0000, pcie::k1::RegisterBlock;
+    /// DCIU peripheral.
+    pub struct DCIU => 0xd844_0000, dciu::k1::RegisterBlock;
+    /// DSI peripheral.
+    pub struct DSI => 0xd421_a800, dsi::k1::RegisterBlock;
+    /// 2D graphics engine.
+    pub struct V2D => 0xc010_0000, v2d::RegisterBlock;
+    /// Camera capture and CSI PHY 0.
+    pub struct CCIC0 => 0xd420_a000, ccic::k1::RegisterBlock;
+    /// Camera capture and CSI PHY 1.
+    pub struct CCIC1 => 0xd420_a800, ccic::k1::RegisterBlock;
+    /// Camera capture and CSI PHY 2.
+    pub struct CCIC2 => 0xd420_6000, ccic::k1::RegisterBlock;
+    /// Video processing unit.
+    pub struct VPU => 0xc050_0000, vpu::RegisterBlock;
+    /// Display processing unit 0.
+    pub struct DPU0 => 0xc034_0000, dpu::k1::RegisterBlock;
+    /// Display processing unit 1.
+    pub struct DPU1 => 0xc044_0000, dpu::k1::RegisterBlock;
+    /// Real-time I2C controller.
+    pub struct R_I2C0 => 0xc088_7000, i2c::RegisterBlock;
+    /// Real-time SPI controller 0.
+    pub struct R_SPI0 => 0xc088_5000, spi::k1::RegisterBlock;
+    /// Platform interrupt controller.
+    pub struct PLIC => 0xe000_0000, plic::k1::RegisterBlock;
 }
 
 impl_clock_controller!(apbs, APBS, apbs::k1::RegisterBlock);
@@ -434,6 +559,126 @@ pub struct Peripherals {
     pub timer2: TIMER2,
     /// Non-secure peripheral DMA controller.
     pub pdma: PDMA,
+    /// Secure APB clock and reset controller.
+    pub apbc2: APBC2,
+    /// Real-time clock.
+    pub rtc: RTC,
+    /// Secure real-time clock.
+    pub sec_rtc: SEC_RTC,
+    /// Real-time CPU system controller.
+    pub rcpu: RCPU,
+    /// Real-time audio clock controller.
+    pub r_audio_clock: R_AUDIO_CLOCK,
+    /// Real-time power-management controller.
+    pub rpmu: RPMU,
+    /// Real-time PWM clock controller.
+    pub r_pwm_clock: R_PWM_CLOCK,
+    /// One-Wire bus master.
+    pub onewire: ONEWIRE,
+    /// Application-side mailbox.
+    pub mailbox: MAILBOX,
+    /// Real-time-side mailbox.
+    pub r_mailbox: R_MAILBOX,
+    /// Infrared receiver.
+    pub ir: IR,
+    /// Real-time infrared receiver.
+    pub r_ir: R_IR,
+    /// Temperature sensor.
+    pub tsensor: TSENSOR,
+    /// CAN-FD controller.
+    pub can0: CAN0,
+    /// Real-time CAN-FD controller.
+    pub r_can0: R_CAN0,
+    /// Random generator and DMA.
+    pub trng: TRNG,
+    /// Real-time AHB DMA.
+    pub ahbdma: AHBDMA,
+    /// Ethernet MAC 0.
+    pub emac0: EMAC0,
+    /// Ethernet MAC 1.
+    pub emac1: EMAC1,
+    /// PMU timer and watchdog.
+    pub pmu_timer: PMU_TIMER,
+    /// Secure timer and watchdog.
+    pub sec_timer: SEC_TIMER,
+    /// USB2 OTG controller.
+    pub usb2_otg: USB2_OTG,
+    /// USB2 host controller.
+    pub usb2_host: USB2_HOST,
+    /// USB2 OTG PHY.
+    pub usb2_phy_otg: USB2_PHY_OTG,
+    /// USB2 host PHY.
+    pub usb2_phy_host: USB2_PHY_HOST,
+    /// USB3 UTMI PHY.
+    pub usb3_utmi: USB3_UTMI,
+    /// DWC3 USB3 controller.
+    pub usb3: USB3,
+    /// Real-time PWM 0.
+    pub r_pwm0: R_PWM0,
+    /// Real-time PWM 1.
+    pub r_pwm1: R_PWM1,
+    /// Real-time PWM 2.
+    pub r_pwm2: R_PWM2,
+    /// Real-time PWM 3.
+    pub r_pwm3: R_PWM3,
+    /// Real-time PWM 4.
+    pub r_pwm4: R_PWM4,
+    /// Real-time PWM 5.
+    pub r_pwm5: R_PWM5,
+    /// Real-time PWM 6.
+    pub r_pwm6: R_PWM6,
+    /// Real-time PWM 7.
+    pub r_pwm7: R_PWM7,
+    /// Real-time PWM 8.
+    pub r_pwm8: R_PWM8,
+    /// Real-time PWM 9.
+    pub r_pwm9: R_PWM9,
+    /// Audio DMA 0.
+    pub adma0: ADMA0,
+    /// Half-duplex audio interface 0.
+    pub ri2s0: RI2S0,
+    /// Audio DMA 1.
+    pub adma1: ADMA1,
+    /// Half-duplex audio interface 1.
+    pub ri2s1: RI2S1,
+    /// Audio DMA 2.
+    pub adma2: ADMA2,
+    /// Half-duplex audio interface 2.
+    pub ri2s2: RI2S2,
+    /// Audio DMA 3.
+    pub adma3: ADMA3,
+    /// Half-duplex audio interface 3.
+    pub ri2s3: RI2S3,
+    /// PCIe 0 link-management registers.
+    pub pcie0_link: PCIE0_LINK,
+    /// PCIe 1 link-management registers.
+    pub pcie1_link: PCIE1_LINK,
+    /// PCIe 2 link-management registers.
+    pub pcie2_link: PCIE2_LINK,
+    /// DCIU peripheral.
+    pub dciu: DCIU,
+    /// DSI peripheral.
+    pub dsi: DSI,
+    /// 2D graphics engine.
+    pub v2d: V2D,
+    /// Camera capture and CSI PHY 0.
+    pub ccic0: CCIC0,
+    /// Camera capture and CSI PHY 1.
+    pub ccic1: CCIC1,
+    /// Camera capture and CSI PHY 2.
+    pub ccic2: CCIC2,
+    /// Video processing unit.
+    pub vpu: VPU,
+    /// Display processing unit 0.
+    pub dpu0: DPU0,
+    /// Display processing unit 1.
+    pub dpu1: DPU1,
+    /// Real-time I2C controller.
+    pub r_i2c0: R_I2C0,
+    /// Real-time SPI controller 0.
+    pub r_spi0: R_SPI0,
+    /// Platform interrupt controller.
+    pub plic: PLIC,
 }
 
 impl Peripherals {
@@ -479,6 +724,186 @@ impl Peripherals {
     pub unsafe fn steal() -> Self {
         super::PERIPHERALS_TAKEN.store(true, core::sync::atomic::Ordering::Release);
         Self {
+            plic: PLIC {
+                _private: core::marker::PhantomData,
+            },
+            vpu: VPU {
+                _private: core::marker::PhantomData,
+            },
+            dpu0: DPU0 {
+                _private: core::marker::PhantomData,
+            },
+            dpu1: DPU1 {
+                _private: core::marker::PhantomData,
+            },
+            r_i2c0: R_I2C0 {
+                _private: core::marker::PhantomData,
+            },
+            r_spi0: R_SPI0 {
+                _private: core::marker::PhantomData,
+            },
+            v2d: V2D {
+                _private: core::marker::PhantomData,
+            },
+            ccic0: CCIC0 {
+                _private: core::marker::PhantomData,
+            },
+            ccic1: CCIC1 {
+                _private: core::marker::PhantomData,
+            },
+            ccic2: CCIC2 {
+                _private: core::marker::PhantomData,
+            },
+            dciu: DCIU {
+                _private: core::marker::PhantomData,
+            },
+            dsi: DSI {
+                _private: core::marker::PhantomData,
+            },
+            apbc2: APBC2 {
+                _private: core::marker::PhantomData,
+            },
+            rtc: RTC {
+                _private: core::marker::PhantomData,
+            },
+            sec_rtc: SEC_RTC {
+                _private: core::marker::PhantomData,
+            },
+            rcpu: RCPU {
+                _private: core::marker::PhantomData,
+            },
+            r_audio_clock: R_AUDIO_CLOCK {
+                _private: core::marker::PhantomData,
+            },
+            rpmu: RPMU {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm_clock: R_PWM_CLOCK {
+                _private: core::marker::PhantomData,
+            },
+            onewire: ONEWIRE {
+                _private: core::marker::PhantomData,
+            },
+            mailbox: MAILBOX {
+                _private: core::marker::PhantomData,
+            },
+            r_mailbox: R_MAILBOX {
+                _private: core::marker::PhantomData,
+            },
+            ir: IR {
+                _private: core::marker::PhantomData,
+            },
+            r_ir: R_IR {
+                _private: core::marker::PhantomData,
+            },
+            tsensor: TSENSOR {
+                _private: core::marker::PhantomData,
+            },
+            can0: CAN0 {
+                _private: core::marker::PhantomData,
+            },
+            r_can0: R_CAN0 {
+                _private: core::marker::PhantomData,
+            },
+            trng: TRNG {
+                _private: core::marker::PhantomData,
+            },
+            ahbdma: AHBDMA {
+                _private: core::marker::PhantomData,
+            },
+            emac0: EMAC0 {
+                _private: core::marker::PhantomData,
+            },
+            emac1: EMAC1 {
+                _private: core::marker::PhantomData,
+            },
+            pmu_timer: PMU_TIMER {
+                _private: core::marker::PhantomData,
+            },
+            sec_timer: SEC_TIMER {
+                _private: core::marker::PhantomData,
+            },
+            usb2_otg: USB2_OTG {
+                _private: core::marker::PhantomData,
+            },
+            usb2_host: USB2_HOST {
+                _private: core::marker::PhantomData,
+            },
+            usb2_phy_otg: USB2_PHY_OTG {
+                _private: core::marker::PhantomData,
+            },
+            usb2_phy_host: USB2_PHY_HOST {
+                _private: core::marker::PhantomData,
+            },
+            usb3_utmi: USB3_UTMI {
+                _private: core::marker::PhantomData,
+            },
+            usb3: USB3 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm0: R_PWM0 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm1: R_PWM1 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm2: R_PWM2 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm3: R_PWM3 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm4: R_PWM4 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm5: R_PWM5 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm6: R_PWM6 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm7: R_PWM7 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm8: R_PWM8 {
+                _private: core::marker::PhantomData,
+            },
+            r_pwm9: R_PWM9 {
+                _private: core::marker::PhantomData,
+            },
+            adma0: ADMA0 {
+                _private: core::marker::PhantomData,
+            },
+            ri2s0: RI2S0 {
+                _private: core::marker::PhantomData,
+            },
+            adma1: ADMA1 {
+                _private: core::marker::PhantomData,
+            },
+            ri2s1: RI2S1 {
+                _private: core::marker::PhantomData,
+            },
+            adma2: ADMA2 {
+                _private: core::marker::PhantomData,
+            },
+            ri2s2: RI2S2 {
+                _private: core::marker::PhantomData,
+            },
+            adma3: ADMA3 {
+                _private: core::marker::PhantomData,
+            },
+            ri2s3: RI2S3 {
+                _private: core::marker::PhantomData,
+            },
+            pcie0_link: PCIE0_LINK {
+                _private: core::marker::PhantomData,
+            },
+            pcie1_link: PCIE1_LINK {
+                _private: core::marker::PhantomData,
+            },
+            pcie2_link: PCIE2_LINK {
+                _private: core::marker::PhantomData,
+            },
             // SAFETY: These are all K1 application hart IDs; steal transfers them once.
             harts: Harts {
                 hart0: unsafe { crate::hart::Hart::new() },
@@ -825,6 +1250,66 @@ mod tests {
         address::<TIMER1, timer::k1::RegisterBlock>(TIMER1::ptr(), 0xd401_4000);
         address::<TIMER2, timer::k1::RegisterBlock>(TIMER2::ptr(), 0xd401_6000);
         address::<PDMA, pdma::k1::RegisterBlock>(PDMA::ptr(), 0xd400_0000);
+        address::<APBC2, apbc2::k1::RegisterBlock>(APBC2::ptr(), 0xf061_0000);
+        address::<RTC, rtc::k1::RegisterBlock>(RTC::ptr(), 0xd401_0000);
+        address::<SEC_RTC, rtc::k1::RegisterBlock>(SEC_RTC::ptr(), 0xf061_5000);
+        address::<RCPU, rcpu::k1::RegisterBlock>(RCPU::ptr(), 0xc088_0000);
+        address::<R_AUDIO_CLOCK, rcpu::k1::AudioClockRegisters>(R_AUDIO_CLOCK::ptr(), 0xc088_2000);
+        address::<RPMU, rpmu::k1::RegisterBlock>(RPMU::ptr(), 0xc088_c000);
+        address::<R_PWM_CLOCK, rcpu::k1::PwmClockRegisters>(R_PWM_CLOCK::ptr(), 0xc088_8000);
+        address::<ONEWIRE, onewire::k1::RegisterBlock>(ONEWIRE::ptr(), 0xd401_1800);
+        address::<MAILBOX, mailbox::k1::RegisterBlock>(MAILBOX::ptr(), 0xd401_3400);
+        address::<R_MAILBOX, mailbox::k1::RegisterBlock>(R_MAILBOX::ptr(), 0xc088_a000);
+        address::<IR, ir::k1::RegisterBlock>(IR::ptr(), 0xd401_7f00);
+        address::<R_IR, ir::k1::RegisterBlock>(R_IR::ptr(), 0xc088_e000);
+        address::<TSENSOR, tsensor::k1::RegisterBlock>(TSENSOR::ptr(), 0xd401_8000);
+        address::<CAN0, can::k1::RegisterBlock>(CAN0::ptr(), 0xd402_8000);
+        address::<R_CAN0, can::k1::RegisterBlock>(R_CAN0::ptr(), 0xc087_0000);
+        address::<TRNG, trng::k1::RegisterBlock>(TRNG::ptr(), 0xf070_3800);
+        address::<AHBDMA, ahbdma::k1::RegisterBlock>(AHBDMA::ptr(), 0xc088_4000);
+        address::<EMAC0, emac::k1::RegisterBlock>(EMAC0::ptr(), 0xcac8_0000);
+        address::<EMAC1, emac::k1::RegisterBlock>(EMAC1::ptr(), 0xcac8_1000);
+        address::<PMU_TIMER, timer::k1::RegisterBlock>(PMU_TIMER::ptr(), 0xd408_0000);
+        address::<SEC_TIMER, timer::k1::RegisterBlock>(SEC_TIMER::ptr(), 0xf061_6000);
+        address::<USB2_OTG, usb2::k1::RegisterBlock>(USB2_OTG::ptr(), 0xc090_0100);
+        address::<USB2_HOST, usb2::k1::RegisterBlock>(USB2_HOST::ptr(), 0xc098_0100);
+        address::<USB2_PHY_OTG, usb2_phy::k1::RegisterBlock>(USB2_PHY_OTG::ptr(), 0xc094_0000);
+        address::<USB2_PHY_HOST, usb2_phy::k1::RegisterBlock>(USB2_PHY_HOST::ptr(), 0xc09c_0000);
+        address::<USB3_UTMI, usb2_phy::k1::RegisterBlock>(USB3_UTMI::ptr(), 0xc0a3_0000);
+        address::<USB3, usb3::RegisterBlock>(USB3::ptr(), 0xc0a0_0000);
+        address::<R_PWM0, pwm::k1::RegisterBlock>(R_PWM0::ptr(), 0xc088_8100);
+        address::<R_PWM1, pwm::k1::RegisterBlock>(R_PWM1::ptr(), 0xc088_8200);
+        address::<R_PWM2, pwm::k1::RegisterBlock>(R_PWM2::ptr(), 0xc088_8300);
+        address::<R_PWM3, pwm::k1::RegisterBlock>(R_PWM3::ptr(), 0xc088_8400);
+        address::<R_PWM4, pwm::k1::RegisterBlock>(R_PWM4::ptr(), 0xc088_8500);
+        address::<R_PWM5, pwm::k1::RegisterBlock>(R_PWM5::ptr(), 0xc088_8600);
+        address::<R_PWM6, pwm::k1::RegisterBlock>(R_PWM6::ptr(), 0xc088_8700);
+        address::<R_PWM7, pwm::k1::RegisterBlock>(R_PWM7::ptr(), 0xc088_8800);
+        address::<R_PWM8, pwm::k1::RegisterBlock>(R_PWM8::ptr(), 0xc088_8900);
+        address::<R_PWM9, pwm::k1::RegisterBlock>(R_PWM9::ptr(), 0xc088_8a00);
+        address::<ADMA0, adma::k1::RegisterBlock>(ADMA0::ptr(), 0xc088_3000);
+        address::<RI2S0, ri2s::k1::RegisterBlock>(RI2S0::ptr(), 0xc088_3100);
+        address::<ADMA1, adma::k1::RegisterBlock>(ADMA1::ptr(), 0xc088_3400);
+        address::<RI2S1, ri2s::k1::RegisterBlock>(RI2S1::ptr(), 0xc088_3500);
+        address::<ADMA2, adma::k1::RegisterBlock>(ADMA2::ptr(), 0xc088_3800);
+        address::<RI2S2, ri2s::k1::RegisterBlock>(RI2S2::ptr(), 0xc088_3900);
+        address::<ADMA3, adma::k1::RegisterBlock>(ADMA3::ptr(), 0xc088_3c00);
+        address::<RI2S3, ri2s::k1::RegisterBlock>(RI2S3::ptr(), 0xc088_3d00);
+        address::<PCIE0_LINK, pcie::k1::RegisterBlock>(PCIE0_LINK::ptr(), 0xc0b2_0000);
+        address::<PCIE1_LINK, pcie::k1::RegisterBlock>(PCIE1_LINK::ptr(), 0xc0c2_0000);
+        address::<PCIE2_LINK, pcie::k1::RegisterBlock>(PCIE2_LINK::ptr(), 0xc0d2_0000);
+        address::<DCIU, dciu::k1::RegisterBlock>(DCIU::ptr(), 0xd844_0000);
+        address::<DSI, dsi::k1::RegisterBlock>(DSI::ptr(), 0xd421_a800);
+        address::<V2D, v2d::RegisterBlock>(V2D::ptr(), 0xc010_0000);
+        address::<CCIC0, ccic::k1::RegisterBlock>(CCIC0::ptr(), 0xd420_a000);
+        address::<CCIC1, ccic::k1::RegisterBlock>(CCIC1::ptr(), 0xd420_a800);
+        address::<CCIC2, ccic::k1::RegisterBlock>(CCIC2::ptr(), 0xd420_6000);
+        address::<VPU, vpu::RegisterBlock>(VPU::ptr(), 0xc050_0000);
+        address::<DPU0, dpu::k1::RegisterBlock>(DPU0::ptr(), 0xc034_0000);
+        address::<DPU1, dpu::k1::RegisterBlock>(DPU1::ptr(), 0xc044_0000);
+        address::<R_I2C0, i2c::RegisterBlock>(R_I2C0::ptr(), 0xc088_7000);
+        address::<R_SPI0, spi::k1::RegisterBlock>(R_SPI0::ptr(), 0xc088_5000);
+        address::<PLIC, plic::k1::RegisterBlock>(PLIC::ptr(), 0xe000_0000);
         assert_eq!(core::mem::size_of::<Peripherals>(), 0);
     }
 }
