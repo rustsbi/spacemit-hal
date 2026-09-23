@@ -185,6 +185,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dw-apb-i2c"
+version = "0.0.0"
+source = "git+https://github.com/rustsbi/dw-apb-drivers?rev=b86387fb6c23643a2f674f2206b806dc7c73c4ec#b86387fb6c23643a2f674f2206b806dc7c73c4ec"
+dependencies = [
+ "volatile-register",
+]
+
+[[package]]
 name = "eeprom24x"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -641,6 +649,7 @@ checksum = "b9be42f50aa861c555654aa3a37f52f4b1074bacf4e48fe0ef7fa584e80f1f0f"
 name = "spacemit-hal"
 version = "0.0.0"
 dependencies = [
+ "dw-apb-i2c",
  "embedded-hal",
  "embedded-io",
  "embedded-time",

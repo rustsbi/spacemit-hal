@@ -26,6 +26,7 @@ license = "MulanPSL-2.0 OR MIT"
 repository = "https://atomgit.com/rustsbi/spacemit-hal"
 
 [workspace.dependencies]
+dw-apb-i2c = { version = "0.0.0", git = "https://github.com/rustsbi/dw-apb-drivers", rev = "b86387fb6c23643a2f674f2206b806dc7c73c4ec" }
 cfg-if = "1.0.4"
 embedded-hal = "1.0.0"
 embedded-io = "0.7.1"

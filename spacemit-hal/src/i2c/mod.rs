@@ -3,6 +3,7 @@
 mod blocking;
 mod pads;
 mod register;
+pub mod v100;
 pub use blocking::{BlockingI2c, Config, Error};
 pub use pads::{IntoI2c, IntoPads, Pads};
 pub use register::{ControlRegister, DataBuffer, RegisterBlock};

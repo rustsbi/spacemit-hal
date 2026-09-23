@@ -2,10 +2,9 @@
 
 pub mod k1;
 pub mod k3;
-#[doc(hidden)]
 pub mod v100;
 
-// Shared by both SoC modules: overlapping address maps must not yield two owners.
+// Shared by all SoC modules: overlapping address maps must not yield two owners.
 static PERIPHERALS_TAKEN: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 

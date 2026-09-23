@@ -1,6 +1,6 @@
 # `spacemit-hal`
 
-Peripheral abstractions for SpacemiT K1/M1 and K3 SoCs.
+Peripheral abstractions for SpacemiT K1/M1, K3 and V100 SoCs.
 
 ## License
 

@@ -28,6 +28,7 @@ pub mod soc;
 const _: () = {
     assert!(core::mem::size_of::<soc::k1::Peripherals>() == 0);
     assert!(core::mem::size_of::<soc::k3::Peripherals>() == 0);
+    assert!(core::mem::size_of::<soc::v100::Peripherals>() == 0);
 };
 
 cfg_if::cfg_if! {

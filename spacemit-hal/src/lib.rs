@@ -1,4 +1,4 @@
-//! Peripheral abstractions for SpacemiT K1/M1 and K3 SoCs.
+//! Peripheral abstractions for SpacemiT K1/M1, K3 and V100 SoCs.
 
 #![no_std]
 #![deny(missing_docs)]
@@ -24,7 +24,9 @@ pub mod gpio;
 pub mod hdma;
 pub mod hsio_phy;
 pub mod i2c;
+pub mod iommu;
 pub mod iopmp;
+pub mod ipmi;
 pub mod ir;
 pub mod mailbox;
 pub mod mfpr;

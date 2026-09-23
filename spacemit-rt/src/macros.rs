@@ -14,10 +14,17 @@ macro_rules! soc {
             }
 
             impl $Ty {
+                /// Physical base address, including on targets with narrower pointers.
+                pub const BASE: u64 = $paddr;
+
                 /// Returns the peripheral's physical register address.
+                ///
+                /// # Panics
+                /// Panics if the physical address does not fit the target pointer width.
                 #[inline]
                 pub const fn ptr() -> *const $DerefTy {
-                    $paddr as *const $DerefTy
+                    assert!(Self::BASE <= usize::MAX as u64, "physical address exceeds pointer width");
+                    Self::BASE as *const $DerefTy
                 }
             }
 

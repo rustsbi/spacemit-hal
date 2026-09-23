@@ -13,6 +13,8 @@ pub use pads::{IntoReceive, IntoTransmit, Pads};
 pub use register::RegisterBlock;
 pub use uart16550;
 
+pub mod v100;
+
 /// A consumed UART token or borrowed register block.
 pub trait Instance<'a> {
     /// Returns the UART registers for the consumed resource's lifetime.
